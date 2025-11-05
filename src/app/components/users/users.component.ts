@@ -246,14 +246,26 @@ export class UsersComponent implements OnInit {
     try {
       const { email, password, role } = this.userForm.value;
 
-      // Criar usuário no Supabase Auth
+      // ⚠️ IMPORTANTE: auth.admin.createUser() requer Service Role Key
+      // Em produção, isso pode não funcionar se não estiver configurado corretamente
+      // Consulte docs/CONFIGURAR-GERENCIAMENTO-USUARIOS.md para alternativas
       const { data: authData, error: authError } = await this.supabase.client.auth.admin.createUser({
         email,
         password,
         email_confirm: true
       });
 
-      if (authError) throw authError;
+      if (authError) {
+        // Mensagem de erro mais específica para erro de permissão
+        if (authError.message?.includes('permission') || authError.message?.includes('unauthorized')) {
+          throw new Error(
+            'Erro de permissão: A criação de usuários requer configuração especial. ' +
+            'Consulte a documentação em docs/CONFIGURAR-GERENCIAMENTO-USUARIOS.md para alternativas. ' +
+            'Erro original: ' + authError.message
+          );
+        }
+        throw authError;
+      }
 
       // Criar perfil na tabela profiles
       await this.supabase.createProfile(authData.user.id, email, role);
@@ -305,7 +317,7 @@ export class UsersComponent implements OnInit {
     this.success = null;
 
     try {
-      // Excluir perfil
+      // Excluir perfil primeiro
       const { error: profileError } = await this.supabase.client
         .from('profiles')
         .delete()
@@ -313,20 +325,35 @@ export class UsersComponent implements OnInit {
 
       if (profileError) throw profileError;
 
-      // Excluir usuário do Auth (requer admin)
-      const { error: authError } = await this.supabase.client.auth.admin.deleteUser(userId);
-
-      if (authError) {
-        console.warn('Erro ao excluir usuário do Auth:', authError);
-        // Continua mesmo se falhar no Auth, pois o perfil já foi excluído
+      // ⚠️ IMPORTANTE: auth.admin.deleteUser() requer Service Role Key
+      // Tentar excluir do Auth, mas não bloquear se falhar (perfil já foi excluído)
+      try {
+        const { error: authError } = await this.supabase.client.auth.admin.deleteUser(userId);
+        
+        if (authError) {
+          // Se for erro de permissão, mostrar aviso mas não bloquear
+          if (authError.message?.includes('permission') || authError.message?.includes('unauthorized')) {
+            console.warn('Aviso: Não foi possível excluir o usuário do sistema de autenticação devido a permissões. ' +
+                        'O perfil foi removido do sistema. Consulte docs/CONFIGURAR-GERENCIAMENTO-USUARIOS.md');
+            this.success = 'Perfil excluído com sucesso! Nota: Exclusão do Auth requer configuração especial.';
+          } else {
+            console.warn('Erro ao excluir usuário do Auth:', authError);
+            this.success = 'Perfil excluído com sucesso!';
+          }
+        } else {
+          this.success = 'Usuário excluído com sucesso!';
+        }
+      } catch (authErr: any) {
+        // Se falhar ao excluir do Auth, ainda assim considerar sucesso (perfil foi excluído)
+        console.warn('Não foi possível excluir do Auth:', authErr);
+        this.success = 'Perfil excluído com sucesso!';
       }
 
-      this.success = 'Usuário excluído com sucesso!';
       await this.loadProfiles();
       
       setTimeout(() => {
         this.success = null;
-      }, 3000);
+      }, 5000); // Aumentar tempo para mensagens de aviso
     } catch (err: any) {
       this.error = 'Erro ao excluir usuário: ' + (err.message || 'Erro desconhecido');
       console.error('Erro ao excluir usuário:', err);

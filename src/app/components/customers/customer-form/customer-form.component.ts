@@ -3,7 +3,10 @@ import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterModule, Router, ActivatedRoute } from '@angular/router';
 import { CustomerService } from '../../../services/customer.service';
+import { LogService } from '../../../services/log.service';
+import { ErrorService } from '../../../services/error.service';
 import { Customer } from '../../../models/customer.model';
+import { nameValidator, phoneValidator, positiveAmountValidator, getErrorMessage } from '../../../utils/form-validators';
 
 @Component({
   selector: 'app-customer-form',
@@ -45,7 +48,7 @@ import { Customer } from '../../../models/customer.model';
               placeholder="Nome completo do cliente"
               [class.error]="customerForm.get('name')?.invalid && customerForm.get('name')?.touched">
             <div *ngIf="customerForm.get('name')?.invalid && customerForm.get('name')?.touched" class="error-message">
-              Nome é obrigatório
+              {{ getErrorMessage(customerForm.get('name')) }}
             </div>
           </div>
 
@@ -55,7 +58,11 @@ import { Customer } from '../../../models/customer.model';
               id="phone" 
               type="text" 
               formControlName="phone" 
-              placeholder="(00) 00000-0000">
+              placeholder="(00) 00000-0000"
+              [class.error]="customerForm.get('phone')?.invalid && customerForm.get('phone')?.touched">
+            <div *ngIf="customerForm.get('phone')?.invalid && customerForm.get('phone')?.touched" class="error-message">
+              {{ getErrorMessage(customerForm.get('phone')) }}
+            </div>
           </div>
 
           <div class="form-group">
@@ -69,7 +76,7 @@ import { Customer } from '../../../models/customer.model';
               placeholder="0.00"
               [class.error]="customerForm.get('plan_value')?.invalid && customerForm.get('plan_value')?.touched">
             <div *ngIf="customerForm.get('plan_value')?.invalid && customerForm.get('plan_value')?.touched" class="error-message">
-              Valor do plano é obrigatório e deve ser maior que zero
+              {{ getErrorMessage(customerForm.get('plan_value')) }}
             </div>
           </div>
 
@@ -141,12 +148,14 @@ export class CustomerFormComponent implements OnInit {
     private fb: FormBuilder,
     private customerService: CustomerService,
     private router: Router,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private logService: LogService,
+    private errorService: ErrorService
   ) {
     this.customerForm = this.fb.group({
-      name: ['', [Validators.required]],
-      phone: [''],
-      plan_value: [0, [Validators.required, Validators.min(0.01)]],
+      name: ['', [Validators.required, nameValidator()]],
+      phone: ['', [phoneValidator()]],
+      plan_value: [0, [Validators.required, positiveAmountValidator()]],
       plan_description: [''],
       is_active: [true]
     });
@@ -178,7 +187,8 @@ export class CustomerFormComponent implements OnInit {
         });
       }
     } catch (err: any) {
-      this.error = err.message || 'Erro ao carregar cliente';
+      this.logService.error('Erro ao carregar cliente:', err);
+      this.error = this.errorService.getErrorMessageString(err);
     } finally {
       this.loading = false;
     }
@@ -199,7 +209,7 @@ export class CustomerFormComponent implements OnInit {
 
     try {
       const formValue = this.customerForm.value;
-      console.log('Dados a serem salvos:', formValue);
+      this.logService.log('Dados a serem salvos:', formValue);
       
       let result;
       if (this.isEditMode && this.customerId) {
@@ -208,21 +218,20 @@ export class CustomerFormComponent implements OnInit {
         result = await this.customerService.create(formValue);
       }
 
-      console.log('Cliente salvo com sucesso:', result);
+      this.logService.log('Cliente salvo com sucesso:', result);
       this.success = true;
       
       setTimeout(() => {
         this.router.navigate(['/customers']);
       }, 1500);
     } catch (err: any) {
-      console.error('Erro ao salvar cliente:', err);
-      this.error = err.message || err.error?.message || 'Erro ao salvar cliente. Verifique os dados e tente novamente.';
+      this.logService.error('Erro ao salvar cliente:', err);
+      this.error = this.errorService.getErrorMessageString(err);
       this.saving = false;
     }
   }
 
-  cancel() {
-    this.router.navigate(['/customers']);
+  getErrorMessage(control: any): string {
+    return getErrorMessage(control);
   }
-}
 

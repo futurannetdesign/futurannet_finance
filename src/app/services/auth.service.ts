@@ -2,6 +2,8 @@ import { Injectable } from '@angular/core';
 import { Router } from '@angular/router';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { SupabaseService } from './supabase.service';
+import { LogService } from './log.service';
+import { ErrorService } from './error.service';
 import { Profile } from '../models/customer.model';
 
 @Injectable({
@@ -18,7 +20,9 @@ export class AuthService {
 
   constructor(
     private supabase: SupabaseService,
-    private router: Router
+    private router: Router,
+    private logService: LogService,
+    private errorService: ErrorService
   ) {
     this.initAuth();
     this.supabase.client.auth.onAuthStateChange((event, session) => {
@@ -51,18 +55,18 @@ export class AuthService {
       this.currentUserSubject.next(user);
       
       const profile = await this.supabase.getProfile(user.id);
-      console.log('Perfil carregado do banco:', profile);
+      this.logService.log('Perfil carregado do banco:', profile);
       
       if (profile) {
         this.currentProfileSubject.next(profile);
         this.currentRoleSubject.next(profile.role);
-        console.log('Perfil atualizado no serviço. Role:', profile.role);
+        this.logService.log('Perfil atualizado no serviço. Role:', profile.role);
       } else {
-        console.warn('Perfil não encontrado para o usuário:', user.id);
+        this.logService.warn('Perfil não encontrado para o usuário:', user.id);
         this.clearUser();
       }
     } catch (error) {
-      console.error('Erro ao carregar perfil:', error);
+      this.logService.error('Erro ao carregar perfil:', error);
       this.clearUser();
     }
   }
@@ -74,23 +78,49 @@ export class AuthService {
   }
 
   async signIn(email: string, password: string) {
-    const { data, error } = await this.supabase.client.auth.signInWithPassword({
-      email,
-      password
-    });
+    try {
+      const { data, error } = await this.supabase.client.auth.signInWithPassword({
+        email,
+        password
+      });
 
-    if (error) throw error;
-    
-    await this.loadUserProfile();
-    return data;
+      if (error) {
+        this.logService.error('Erro ao fazer login:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
+      }
+      
+      await this.loadUserProfile();
+      return data;
+    } catch (err: any) {
+      this.logService.error('Erro ao fazer login:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
+    }
   }
 
   async signOut() {
-    const { error } = await this.supabase.client.auth.signOut();
-    if (error) throw error;
-    
-    this.clearUser();
-    this.router.navigate(['/login']);
+    try {
+      const { error } = await this.supabase.client.auth.signOut();
+      if (error) {
+        this.logService.error('Erro ao fazer logout:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
+      }
+      
+      this.clearUser();
+      this.router.navigate(['/login']);
+    } catch (err: any) {
+      this.logService.error('Erro ao fazer logout:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
+    }
   }
 
   async getCurrentUser() {

@@ -1,18 +1,35 @@
 import { Injectable } from '@angular/core';
 import { SupabaseService } from './supabase.service';
 import { AuditService } from './audit.service';
+import { LogService } from './log.service';
+import { ErrorService } from './error.service';
+import { CacheService } from './cache.service';
 import { AccountPayable } from '../models/customer.model';
+import { calculateAccountStatus } from '../utils/account-status.util';
 
 @Injectable({
   providedIn: 'root'
 })
 export class AccountsPayableService {
+  private readonly CACHE_KEY_ALL = 'accounts_payable:all';
+  private readonly CACHE_KEY_PREFIX = 'accounts_payable:';
+  private readonly CACHE_TTL = 3 * 60 * 1000; // 3 minutos (mais curto pois dados mudam com frequência)
+
   constructor(
     private supabase: SupabaseService,
-    private auditService: AuditService
+    private auditService: AuditService,
+    private logService: LogService,
+    private errorService: ErrorService,
+    private cacheService: CacheService
   ) {}
 
   async getAll(): Promise<AccountPayable[]> {
+    // Verificar cache primeiro
+    const cached = this.cacheService.get<AccountPayable[]>(this.CACHE_KEY_ALL);
+    if (cached) {
+      return cached;
+    }
+
     try {
       const { data, error } = await this.supabase.client
         .from('accounts_payable')
@@ -20,85 +37,77 @@ export class AccountsPayableService {
         .order('due_date', { ascending: true });
 
       if (error) {
-        console.error('Erro do Supabase:', error);
-        throw new Error(error.message || 'Erro ao buscar contas a pagar');
+        this.logService.error('Erro do Supabase ao buscar contas a pagar:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
       }
       
-      // Calcular status para cada conta
-      return (data || []).map(account => {
-        const status = this.calculateStatus(account.due_date, account.paid_date);
-        console.log(`Conta ${account.description}:`, {
-          due_date: account.due_date,
-          paid_date: account.paid_date,
-          paid_date_type: typeof account.paid_date,
-          status_calculado: status
-        });
-        return {
-          ...account,
-          status
-        };
-      });
+      // Calcular status para cada conta usando função compartilhada
+      const accounts = (data || []).map(account => ({
+        ...account,
+        status: calculateAccountStatus(account.due_date, account.paid_date)
+      }));
+      
+      // Armazenar no cache
+      this.cacheService.set(this.CACHE_KEY_ALL, accounts, this.CACHE_TTL);
+      
+      return accounts;
     } catch (err: any) {
-      console.error('Erro ao carregar contas a pagar:', err);
-      throw err;
+      this.logService.error('Erro ao carregar contas a pagar:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
     }
   }
 
   async getById(id: string): Promise<AccountPayable | null> {
-    const { data, error } = await this.supabase.client
-      .from('accounts_payable')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error) throw error;
+    const cacheKey = `${this.CACHE_KEY_PREFIX}${id}`;
     
-    if (data) {
-      return {
-        ...data,
-        status: this.calculateStatus(data.due_date, data.paid_date)
-      };
-    }
-    
-    return null;
-  }
-
-  private calculateStatus(dueDate: string, paidDate?: string | null): 'verde' | 'amarelo' | 'vermelho' {
-    // Verificar se tem data de pagamento válida
-    // Verificar se não é null, undefined, string vazia, ou string "null"/"undefined"
-    const hasPaidDate = paidDate && 
-                       typeof paidDate === 'string' && 
-                       paidDate.trim() !== '' && 
-                       paidDate !== 'null' && 
-                       paidDate !== 'undefined';
-    
-    if (hasPaidDate) {
-      console.log('Conta marcada como PAGO - paid_date:', paidDate);
-      return 'verde'; // Pago
+    // Verificar cache primeiro
+    const cached = this.cacheService.get<AccountPayable>(cacheKey);
+    if (cached) {
+      return cached;
     }
 
-    // Se não tem data de pagamento, calcular baseado na data de vencimento
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const due = new Date(dueDate);
-    due.setHours(0, 0, 0, 0);
-    
-    const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    try {
+      const { data, error } = await this.supabase.client
+        .from('accounts_payable')
+        .select('*')
+        .eq('id', id)
+        .single();
 
-    console.log(`Calculando status: vencimento=${dueDate}, hoje=${today.toISOString()}, diffDays=${diffDays}, paidDate=${paidDate}`);
-
-    if (diffDays < 0) {
-      return 'vermelho'; // Atrasado (vencido e não pago)
-    } else if (diffDays <= 5) {
-      return 'amarelo'; // Próximo do vencimento (até 5 dias)
-    } else {
-      return 'verde'; // Em dia (mais de 5 dias antes do vencimento) - mas não está pago
+      if (error) {
+        this.logService.error('Erro ao buscar conta a pagar por ID:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
+      }
+      
+      if (data) {
+        const account = {
+          ...data,
+          status: calculateAccountStatus(data.due_date, data.paid_date)
+        };
+        // Armazenar no cache
+        this.cacheService.set(cacheKey, account, this.CACHE_TTL);
+        return account;
+      }
+      
+      return null;
+    } catch (err: any) {
+      this.logService.error('Erro ao buscar conta a pagar:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
     }
   }
 
   async create(account: Partial<AccountPayable>): Promise<AccountPayable> {
     try {
-      console.log('Criando conta a pagar:', account);
+      this.logService.log('Criando conta a pagar:', account);
       
       const cleanAccount: any = {
         description: account.description,
@@ -109,7 +118,7 @@ export class AccountsPayableService {
         category: account.category || null
       };
 
-      console.log('Dados limpos para inserção:', cleanAccount);
+      this.logService.log('Dados limpos para inserção:', cleanAccount);
 
       const { data, error } = await this.supabase.client
         .from('accounts_payable')
@@ -118,53 +127,78 @@ export class AccountsPayableService {
         .single();
 
       if (error) {
-        console.error('Erro do Supabase ao criar:', error);
-        throw new Error(error.message || 'Erro ao criar conta a pagar');
+        this.logService.error('Erro do Supabase ao criar conta a pagar:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
       }
 
-      console.log('Conta a pagar criada com sucesso:', data);
+      this.logService.log('Conta a pagar criada com sucesso:', data);
       
       const result = {
         ...data,
-        status: this.calculateStatus(data.due_date, data.paid_date)
+        status: calculateAccountStatus(data.due_date, data.paid_date)
       };
+      
+      // Invalidar cache
+      this.invalidateCache();
       
       // Registrar auditoria (não bloquear se falhar)
       await this.auditService.logAction('CREATE', 'accounts_payable', result.id, null, result).catch(err => 
-        console.warn('Erro ao registrar auditoria:', err)
+        this.logService.warn('Erro ao registrar auditoria:', err)
       );
       
       return result;
     } catch (err: any) {
-      console.error('Erro ao criar conta a pagar:', err);
-      throw err;
+      this.logService.error('Erro ao criar conta a pagar:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
     }
   }
 
   async update(id: string, account: Partial<AccountPayable>): Promise<AccountPayable> {
-    // Buscar dados antigos para auditoria
-    const oldData = await this.getById(id).catch(() => null);
-    
-    const { data, error } = await this.supabase.client
-      .from('accounts_payable')
-      .update(account)
-      .eq('id', id)
-      .select()
-      .single();
+    try {
+      // Buscar dados antigos para auditoria
+      const oldData = await this.getById(id).catch(() => null);
+      
+      const { data, error } = await this.supabase.client
+        .from('accounts_payable')
+        .update(account)
+        .eq('id', id)
+        .select()
+        .single();
 
-    if (error) throw error;
-    
-    const result = {
-      ...data,
-      status: this.calculateStatus(data.due_date, data.paid_date)
-    };
-    
-    // Registrar auditoria (não bloquear se falhar)
-    await this.auditService.logAction('UPDATE', 'accounts_payable', id, oldData, result).catch(err => 
-      console.warn('Erro ao registrar auditoria:', err)
-    );
-    
-    return result;
+      if (error) {
+        this.logService.error('Erro ao atualizar conta a pagar:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
+      }
+      
+      const result = {
+        ...data,
+        status: calculateAccountStatus(data.due_date, data.paid_date)
+      };
+      
+      // Invalidar cache
+      this.invalidateCache();
+      this.cacheService.delete(`${this.CACHE_KEY_PREFIX}${id}`);
+      
+      // Registrar auditoria (não bloquear se falhar)
+      await this.auditService.logAction('UPDATE', 'accounts_payable', id, oldData, result).catch(err => 
+        this.logService.warn('Erro ao registrar auditoria:', err)
+      );
+      
+      return result;
+    } catch (err: any) {
+      this.logService.error('Erro ao atualizar conta a pagar:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
+    }
   }
 
   async markAsPaid(id: string, paidDate: string, isRecurring: boolean): Promise<AccountPayable> {
@@ -201,40 +235,77 @@ export class AccountsPayableService {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        this.logService.error('Erro ao marcar conta como paga:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
+      }
       
       const result = {
         ...data,
-        status: this.calculateStatus(data.due_date, data.paid_date)
+        status: calculateAccountStatus(data.due_date, data.paid_date)
       };
+      
+      // Invalidar cache
+      this.invalidateCache();
+      this.cacheService.delete(`${this.CACHE_KEY_PREFIX}${id}`);
       
       // Registrar auditoria (não bloquear se falhar)
       await this.auditService.logAction('UPDATE', 'accounts_payable', id, account, result).catch(err => 
-        console.warn('Erro ao registrar auditoria:', err)
+        this.logService.warn('Erro ao registrar auditoria:', err)
       );
       
       return result;
     } catch (err: any) {
-      console.error('Erro ao marcar como pago:', err);
-      throw err;
+      this.logService.error('Erro ao marcar como pago:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
     }
   }
 
   async delete(id: string): Promise<void> {
-    // Buscar dados para auditoria antes de excluir
-    const oldData = await this.getById(id).catch(() => null);
-    
-    const { error } = await this.supabase.client
-      .from('accounts_payable')
-      .delete()
-      .eq('id', id);
+    try {
+      // Buscar dados para auditoria antes de excluir
+      const oldData = await this.getById(id).catch(() => null);
+      
+      const { error } = await this.supabase.client
+        .from('accounts_payable')
+        .delete()
+        .eq('id', id);
 
-    if (error) throw error;
-    
-    // Registrar auditoria (não bloquear se falhar)
-    await this.auditService.logAction('DELETE', 'accounts_payable', id, oldData, null).catch(err => 
-      console.warn('Erro ao registrar auditoria:', err)
-    );
+      if (error) {
+        this.logService.error('Erro ao excluir conta a pagar:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
+      }
+      
+      // Invalidar cache
+      this.invalidateCache();
+      this.cacheService.delete(`${this.CACHE_KEY_PREFIX}${id}`);
+      
+      // Registrar auditoria (não bloquear se falhar)
+      await this.auditService.logAction('DELETE', 'accounts_payable', id, oldData, null).catch(err => 
+        this.logService.warn('Erro ao registrar auditoria:', err)
+      );
+    } catch (err: any) {
+      this.logService.error('Erro ao excluir conta a pagar:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
+    }
+  }
+
+  /**
+   * Invalida o cache de contas a pagar
+   */
+  private invalidateCache(): void {
+    this.cacheService.delete(this.CACHE_KEY_ALL);
+    this.cacheService.invalidatePattern(this.CACHE_KEY_PREFIX);
   }
 }
 

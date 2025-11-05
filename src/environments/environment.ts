@@ -1,3 +1,8 @@
+// ⚠️ ATENÇÃO: Este arquivo contém credenciais de desenvolvimento
+// NUNCA commite este arquivo com credenciais reais em um repositório público!
+// Para desenvolvimento local, você pode manter suas credenciais aqui.
+// Para produção, use environment.prod.ts com variáveis de ambiente do servidor.
+
 export const environment = {
   production: false,
   supabaseUrl: 'https://iysudftqryahchlllnfd.supabase.co',

@@ -2,6 +2,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { RouterOutlet, RouterModule, Router, NavigationEnd } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { AuthService } from './services/auth.service';
+import { LogService } from './services/log.service';
 import { Profile } from './models/customer.model';
 import { filter } from 'rxjs/operators';
 
@@ -276,7 +277,8 @@ export class AppComponent implements OnInit, OnDestroy {
 
   constructor(
     private authService: AuthService,
-    private router: Router
+    private router: Router,
+    private logService: LogService
   ) {}
 
   ngOnInit() {
@@ -289,15 +291,15 @@ export class AppComponent implements OnInit, OnDestroy {
     this.authService.currentProfile$.subscribe(profile => {
       this.currentProfile = profile;
       this.isAdminUser = profile?.role === 'admin';
-      console.log('Perfil atualizado:', profile);
-      console.log('É admin?', this.isAdminUser);
+      this.logService.log('Perfil atualizado:', profile);
+      this.logService.log('É admin?', this.isAdminUser);
     });
 
     // Subscrever ao role atual
     this.authService.currentRole$.subscribe(role => {
       this.isAdminUser = role === 'admin';
-      console.log('Role atualizado:', role);
-      console.log('É admin?', this.isAdminUser);
+      this.logService.log('Role atualizado:', role);
+      this.logService.log('É admin?', this.isAdminUser);
     });
 
     // Verificar se está na página de login

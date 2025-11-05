@@ -43,4 +43,11 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+.env.production
+
+# Arquivos de ambiente com credenciais reais (não commitar)
+# Mantenha apenas environment.example.ts no repositório
+# Copie para environment.ts e environment.prod.ts localmente
+# src/environments/environment.ts
+# src/environments/environment.prod.ts
 

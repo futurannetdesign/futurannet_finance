@@ -3,7 +3,10 @@ import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterModule, Router, ActivatedRoute } from '@angular/router';
 import { AccountsPayableService } from '../../../services/accounts-payable.service';
+import { LogService } from '../../../services/log.service';
+import { ErrorService } from '../../../services/error.service';
 import { AccountPayable } from '../../../models/customer.model';
+import { positiveAmountValidator, dateNotBeforeValidator, nameValidator, getErrorMessage } from '../../../utils/form-validators';
 
 @Component({
   selector: 'app-accounts-payable-form',
@@ -39,7 +42,7 @@ import { AccountPayable } from '../../../models/customer.model';
               placeholder="Ex: Aluguel, Gás, Telefone..."
               [class.error]="accountForm.get('description')?.invalid && accountForm.get('description')?.touched">
             <div *ngIf="accountForm.get('description')?.invalid && accountForm.get('description')?.touched" class="error-message">
-              Descrição é obrigatória
+              {{ getErrorMessage(accountForm.get('description')) }}
             </div>
           </div>
 
@@ -49,7 +52,11 @@ import { AccountPayable } from '../../../models/customer.model';
               id="category" 
               type="text" 
               formControlName="category" 
-              placeholder="Ex: Aluguel, Serviços, Impostos...">
+              placeholder="Ex: Aluguel, Serviços, Impostos..."
+              [class.error]="accountForm.get('category')?.invalid && accountForm.get('category')?.touched">
+            <div *ngIf="accountForm.get('category')?.invalid && accountForm.get('category')?.touched" class="error-message">
+              {{ getErrorMessage(accountForm.get('category')) }}
+            </div>
             <small class="form-hint">Opcional: categorize para melhor organização</small>
           </div>
 
@@ -64,7 +71,7 @@ import { AccountPayable } from '../../../models/customer.model';
               placeholder="0.00"
               [class.error]="accountForm.get('amount')?.invalid && accountForm.get('amount')?.touched">
             <div *ngIf="accountForm.get('amount')?.invalid && accountForm.get('amount')?.touched" class="error-message">
-              Valor é obrigatório e deve ser maior que zero
+              {{ getErrorMessage(accountForm.get('amount')) }}
             </div>
           </div>
 
@@ -85,7 +92,11 @@ import { AccountPayable } from '../../../models/customer.model';
             <input 
               id="paid_date" 
               type="date" 
-              formControlName="paid_date">
+              formControlName="paid_date"
+              [class.error]="accountForm.get('paid_date')?.invalid && accountForm.get('paid_date')?.touched">
+            <div *ngIf="accountForm.get('paid_date')?.invalid && accountForm.get('paid_date')?.touched" class="error-message">
+              {{ getErrorMessage(accountForm.get('paid_date')) }}
+            </div>
             <small class="form-hint">Deixe em branco se ainda não foi pago</small>
           </div>
 
@@ -157,14 +168,16 @@ export class AccountsPayableFormComponent implements OnInit {
     private fb: FormBuilder,
     private accountsPayableService: AccountsPayableService,
     private router: Router,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private logService: LogService,
+    private errorService: ErrorService
   ) {
     this.accountForm = this.fb.group({
-      description: ['', [Validators.required]],
-      category: [''],
-      amount: ['', [Validators.required, Validators.min(0.01)]],
+      description: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(200)]],
+      category: ['', [Validators.maxLength(50)]],
+      amount: ['', [Validators.required, positiveAmountValidator()]],
       due_date: ['', [Validators.required]],
-      paid_date: [''],
+      paid_date: ['', [dateNotBeforeValidator('due_date')]],
       is_recurring: [false]
     });
   }
@@ -196,23 +209,24 @@ export class AccountsPayableFormComponent implements OnInit {
         });
       }
     } catch (err: any) {
-      this.error = err.message || 'Erro ao carregar conta';
+      this.logService.error('Erro ao carregar conta:', err);
+      this.error = this.errorService.getErrorMessageString(err);
     } finally {
       this.loading = false;
     }
   }
 
   async onSubmit() {
-    console.log('Formulário submetido');
-    console.log('Form válido?', this.accountForm.valid);
-    console.log('Form value:', this.accountForm.value);
+    this.logService.log('Formulário submetido');
+    this.logService.log('Form válido?', this.accountForm.valid);
+    this.logService.log('Form value:', this.accountForm.value);
     
     if (this.accountForm.invalid) {
-      console.log('Formulário inválido, marcando campos como touched');
+      this.logService.log('Formulário inválido, marcando campos como touched');
       Object.keys(this.accountForm.controls).forEach(key => {
         const control = this.accountForm.get(key);
         control?.markAsTouched();
-        console.log(`${key}:`, { 
+        this.logService.log(`${key}:`, { 
           value: control?.value, 
           invalid: control?.invalid, 
           errors: control?.errors 
@@ -227,7 +241,7 @@ export class AccountsPayableFormComponent implements OnInit {
 
     try {
       const formValue = this.accountForm.value;
-      console.log('Dados a serem salvos:', formValue);
+      this.logService.log('Dados a serem salvos:', formValue);
       
       const accountData: any = {
         description: formValue.description,
@@ -238,32 +252,31 @@ export class AccountsPayableFormComponent implements OnInit {
         is_recurring: formValue.is_recurring || false
       };
 
-      console.log('Dados formatados:', accountData);
+      this.logService.log('Dados formatados:', accountData);
 
       let result;
       if (this.isEditMode && this.accountId) {
-        console.log('Atualizando conta existente...');
+        this.logService.log('Atualizando conta existente...');
         result = await this.accountsPayableService.update(this.accountId, accountData);
       } else {
-        console.log('Criando nova conta...');
+        this.logService.log('Criando nova conta...');
         result = await this.accountsPayableService.create(accountData);
       }
 
-      console.log('Conta salva com sucesso:', result);
+      this.logService.log('Conta salva com sucesso:', result);
       this.success = true;
       
       setTimeout(() => {
         this.router.navigate(['/accounts-payable']);
       }, 1500);
     } catch (err: any) {
-      console.error('Erro ao salvar conta:', err);
-      this.error = err.message || err.error?.message || 'Erro ao salvar conta. Verifique os dados e tente novamente.';
+      this.logService.error('Erro ao salvar conta:', err);
+      this.error = this.errorService.getErrorMessageString(err);
       this.saving = false;
     }
   }
 
-  cancel() {
-    this.router.navigate(['/accounts-payable']);
+  getErrorMessage(control: any): string {
+    return getErrorMessage(control);
   }
-}
 

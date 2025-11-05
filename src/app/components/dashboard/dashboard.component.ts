@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { DashboardService, DashboardSummary } from '../../services/dashboard.service';
 import { AccountReceivable, AccountPayable } from '../../models/customer.model';
+import { getStatusLabel } from '../../utils/account-status.util';
 
 @Component({
   selector: 'app-dashboard',
@@ -84,7 +85,7 @@ import { AccountReceivable, AccountPayable } from '../../models/customer.model';
             <h3>Contas a Receber</h3>
             <div class="status-bars">
               <div class="status-bar">
-                <span class="status-label">Pago:</span>
+                <span class="status-label">Pago/Em Dia:</span>
                 <span class="status-value status-verde">{{ summary.statusCounts.receivable.verde }}</span>
               </div>
               <div class="status-bar">
@@ -102,7 +103,7 @@ import { AccountReceivable, AccountPayable } from '../../models/customer.model';
             <h3>Contas a Pagar</h3>
             <div class="status-bars">
               <div class="status-bar">
-                <span class="status-label">Pago:</span>
+                <span class="status-label">Pago/Em Dia:</span>
                 <span class="status-value status-verde">{{ summary.statusCounts.payable.verde }}</span>
               </div>
               <div class="status-bar">
@@ -502,6 +503,9 @@ export class DashboardComponent implements OnInit {
   loading = false;
   error: string | null = null;
 
+  // Usar função compartilhada para getStatusLabel
+  getStatusLabel = getStatusLabel;
+
   constructor(private dashboardService: DashboardService) {}
 
   async ngOnInit() {
@@ -530,19 +534,6 @@ export class DashboardComponent implements OnInit {
   formatDate(dateString: string): string {
     const date = new Date(dateString);
     return date.toLocaleDateString('pt-BR');
-  }
-
-  getStatusLabel(status: string, paidDate?: string | null): string {
-    if (status === 'verde' && paidDate) {
-      return 'Pago';
-    } else if (status === 'verde' && !paidDate) {
-      return 'Em Dia';
-    } else if (status === 'amarelo') {
-      return 'Próximo';
-    } else if (status === 'vermelho') {
-      return 'Atrasado';
-    }
-    return status;
   }
 
   getDaysOverdue(dueDate: string): number {

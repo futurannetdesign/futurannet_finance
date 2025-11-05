@@ -1,18 +1,36 @@
 import { Injectable } from '@angular/core';
 import { SupabaseService } from './supabase.service';
 import { AuditService } from './audit.service';
+import { LogService } from './log.service';
+import { ErrorService } from './error.service';
+import { CacheService } from './cache.service';
 import { AccountReceivable } from '../models/customer.model';
+import { calculateAccountStatus } from '../utils/account-status.util';
 
 @Injectable({
   providedIn: 'root'
 })
 export class AccountsReceivableService {
+  private readonly CACHE_KEY_ALL = 'accounts_receivable:all';
+  private readonly CACHE_KEY_PREFIX = 'accounts_receivable:';
+  private readonly CACHE_KEY_CUSTOMER_PREFIX = 'accounts_receivable:customer:';
+  private readonly CACHE_TTL = 3 * 60 * 1000; // 3 minutos (mais curto pois dados mudam com frequência)
+
   constructor(
     private supabase: SupabaseService,
-    private auditService: AuditService
+    private auditService: AuditService,
+    private logService: LogService,
+    private errorService: ErrorService,
+    private cacheService: CacheService
   ) {}
 
   async getAll(): Promise<AccountReceivable[]> {
+    // Verificar cache primeiro
+    const cached = this.cacheService.get<AccountReceivable[]>(this.CACHE_KEY_ALL);
+    if (cached) {
+      return cached;
+    }
+
     try {
       const { data, error } = await this.supabase.client
         .from('accounts_receivable')
@@ -27,22 +45,40 @@ export class AccountsReceivableService {
         .order('due_date', { ascending: true });
 
       if (error) {
-        console.error('Erro do Supabase:', error);
-        throw new Error(error.message || 'Erro ao buscar contas a receber');
+        this.logService.error('Erro do Supabase ao buscar contas a receber:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
       }
       
-      // Calcular status para cada conta
-      return (data || []).map(account => ({
+      // Calcular status para cada conta usando função compartilhada
+      const accounts = (data || []).map(account => ({
         ...account,
-        status: this.calculateStatus(account.due_date, account.paid_date)
+        status: calculateAccountStatus(account.due_date, account.paid_date)
       }));
+      
+      // Armazenar no cache
+      this.cacheService.set(this.CACHE_KEY_ALL, accounts, this.CACHE_TTL);
+      
+      return accounts;
     } catch (err: any) {
-      console.error('Erro ao carregar contas a receber:', err);
-      throw err;
+      this.logService.error('Erro ao carregar contas a receber:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
     }
   }
 
   async getByCustomerId(customerId: string): Promise<AccountReceivable[]> {
+    const cacheKey = `${this.CACHE_KEY_CUSTOMER_PREFIX}${customerId}`;
+    
+    // Verificar cache primeiro
+    const cached = this.cacheService.get<AccountReceivable[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     try {
       const { data, error } = await this.supabase.client
         .from('accounts_receivable')
@@ -58,72 +94,83 @@ export class AccountsReceivableService {
         .order('due_date', { ascending: true });
 
       if (error) {
-        console.error('Erro do Supabase:', error);
-        throw new Error(error.message || 'Erro ao buscar contas a receber');
+        this.logService.error('Erro do Supabase ao buscar contas a receber:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
       }
       
-      return (data || []).map(account => ({
+      const accounts = (data || []).map(account => ({
         ...account,
-        status: this.calculateStatus(account.due_date, account.paid_date)
+        status: calculateAccountStatus(account.due_date, account.paid_date)
       }));
+      
+      // Armazenar no cache
+      this.cacheService.set(cacheKey, accounts, this.CACHE_TTL);
+      
+      return accounts;
     } catch (err: any) {
-      console.error('Erro ao carregar contas a receber:', err);
-      throw err;
+      this.logService.error('Erro ao carregar contas a receber por cliente:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
     }
   }
 
   async getById(id: string): Promise<AccountReceivable | null> {
-    const { data, error } = await this.supabase.client
-      .from('accounts_receivable')
-      .select(`
-        *,
-        customers (
-          id,
-          name,
-          phone
-        )
-      `)
-      .eq('id', id)
-      .single();
-
-    if (error) throw error;
+    const cacheKey = `${this.CACHE_KEY_PREFIX}${id}`;
     
-    if (data) {
-      return {
-        ...data,
-        status: this.calculateStatus(data.due_date, data.paid_date)
-      };
-    }
-    
-    return null;
-  }
-
-  private calculateStatus(dueDate: string, paidDate?: string | null): 'verde' | 'amarelo' | 'vermelho' {
-    // Verificar se tem data de pagamento válida (não nula, não vazia, não é apenas espaços)
-    if (paidDate && paidDate.trim() !== '' && paidDate !== 'null' && paidDate !== 'undefined') {
-      return 'verde'; // Pago
+    // Verificar cache primeiro
+    const cached = this.cacheService.get<AccountReceivable>(cacheKey);
+    if (cached) {
+      return cached;
     }
 
-    // Se não tem data de pagamento, calcular baseado na data de vencimento
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const due = new Date(dueDate);
-    due.setHours(0, 0, 0, 0);
-    
-    const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    try {
+      const { data, error } = await this.supabase.client
+        .from('accounts_receivable')
+        .select(`
+          *,
+          customers (
+            id,
+            name,
+            phone
+          )
+        `)
+        .eq('id', id)
+        .single();
 
-    if (diffDays < 0) {
-      return 'vermelho'; // Atrasado (vencido e não pago)
-    } else if (diffDays <= 5) {
-      return 'amarelo'; // Próximo do vencimento (até 5 dias)
-    } else {
-      return 'verde'; // Em dia (mais de 5 dias antes do vencimento) - mas não está pago
+      if (error) {
+        this.logService.error('Erro ao buscar conta a receber por ID:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
+      }
+      
+      if (data) {
+        const account = {
+          ...data,
+          status: calculateAccountStatus(data.due_date, data.paid_date)
+        };
+        // Armazenar no cache
+        this.cacheService.set(cacheKey, account, this.CACHE_TTL);
+        return account;
+      }
+      
+      return null;
+    } catch (err: any) {
+      this.logService.error('Erro ao buscar conta a receber:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
     }
   }
 
   async create(account: Partial<AccountReceivable>): Promise<AccountReceivable> {
     try {
-      console.log('Criando conta a receber:', account);
+      this.logService.log('Criando conta a receber:', account);
       
       const cleanAccount: any = {
         customer_id: account.customer_id,
@@ -133,7 +180,7 @@ export class AccountsReceivableService {
         is_recurring: account.is_recurring !== undefined ? account.is_recurring : false
       };
 
-      console.log('Dados limpos para inserção:', cleanAccount);
+      this.logService.log('Dados limpos para inserção:', cleanAccount);
 
       const { data, error } = await this.supabase.client
         .from('accounts_receivable')
@@ -142,43 +189,68 @@ export class AccountsReceivableService {
         .single();
 
       if (error) {
-        console.error('Erro do Supabase ao criar:', error);
-        throw new Error(error.message || 'Erro ao criar conta a receber');
+        this.logService.error('Erro do Supabase ao criar conta a receber:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
       }
 
-      console.log('Conta a receber criada com sucesso:', data);
+      this.logService.log('Conta a receber criada com sucesso:', data);
+      
+      // Invalidar cache
+      this.invalidateCache();
       
       // Registrar auditoria (não bloquear se falhar)
       await this.auditService.logAction('CREATE', 'accounts_receivable', data.id, null, data).catch(err => 
-        console.warn('Erro ao registrar auditoria:', err)
+        this.logService.warn('Erro ao registrar auditoria:', err)
       );
       
       return data;
     } catch (err: any) {
-      console.error('Erro ao criar conta a receber:', err);
-      throw err;
+      this.logService.error('Erro ao criar conta a receber:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
     }
   }
 
   async update(id: string, account: Partial<AccountReceivable>): Promise<AccountReceivable> {
-    // Buscar dados antigos para auditoria
-    const oldData = await this.getById(id).catch(() => null);
-    
-    const { data, error } = await this.supabase.client
-      .from('accounts_receivable')
-      .update(account)
-      .eq('id', id)
-      .select()
-      .single();
+    try {
+      // Buscar dados antigos para auditoria
+      const oldData = await this.getById(id).catch(() => null);
+      
+      const { data, error } = await this.supabase.client
+        .from('accounts_receivable')
+        .update(account)
+        .eq('id', id)
+        .select()
+        .single();
 
-    if (error) throw error;
-    
-    // Registrar auditoria (não bloquear se falhar)
-    await this.auditService.logAction('UPDATE', 'accounts_receivable', id, oldData, data).catch(err => 
-      console.warn('Erro ao registrar auditoria:', err)
-    );
-    
-    return data;
+      if (error) {
+        this.logService.error('Erro ao atualizar conta a receber:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
+      }
+      
+      // Invalidar cache
+      this.invalidateCache();
+      this.cacheService.delete(`${this.CACHE_KEY_PREFIX}${id}`);
+      
+      // Registrar auditoria (não bloquear se falhar)
+      await this.auditService.logAction('UPDATE', 'accounts_receivable', id, oldData, data).catch(err => 
+        this.logService.warn('Erro ao registrar auditoria:', err)
+      );
+      
+      return data;
+    } catch (err: any) {
+      this.logService.error('Erro ao atualizar conta a receber:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
+    }
   }
 
   async markAsPaid(id: string, paidDate: string, isRecurring: boolean): Promise<AccountReceivable> {
@@ -214,35 +286,79 @@ export class AccountsReceivableService {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        this.logService.error('Erro ao marcar conta como paga:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
+      }
+      
+      // Calcular status após atualização
+      const result = {
+        ...data,
+        status: calculateAccountStatus(data.due_date, data.paid_date)
+      };
+      
+      // Invalidar cache
+      this.invalidateCache();
+      this.cacheService.delete(`${this.CACHE_KEY_PREFIX}${id}`);
       
       // Registrar auditoria (não bloquear se falhar)
-      await this.auditService.logAction('UPDATE', 'accounts_receivable', id, account, data).catch(err => 
-        console.warn('Erro ao registrar auditoria:', err)
+      await this.auditService.logAction('UPDATE', 'accounts_receivable', id, account, result).catch(err => 
+        this.logService.warn('Erro ao registrar auditoria:', err)
       );
       
-      return data;
+      return result;
     } catch (err: any) {
-      console.error('Erro ao marcar como pago:', err);
-      throw err;
+      this.logService.error('Erro ao marcar como pago:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
     }
   }
 
   async delete(id: string): Promise<void> {
-    // Buscar dados para auditoria antes de excluir
-    const oldData = await this.getById(id).catch(() => null);
-    
-    const { error } = await this.supabase.client
-      .from('accounts_receivable')
-      .delete()
-      .eq('id', id);
+    try {
+      // Buscar dados para auditoria antes de excluir
+      const oldData = await this.getById(id).catch(() => null);
+      
+      const { error } = await this.supabase.client
+        .from('accounts_receivable')
+        .delete()
+        .eq('id', id);
 
-    if (error) throw error;
-    
-    // Registrar auditoria (não bloquear se falhar)
-    await this.auditService.logAction('DELETE', 'accounts_receivable', id, oldData, null).catch(err => 
-      console.warn('Erro ao registrar auditoria:', err)
-    );
+      if (error) {
+        this.logService.error('Erro ao excluir conta a receber:', error);
+        const errorMsg = this.errorService.getErrorMessage(error);
+        throw new Error(errorMsg.message);
+      }
+      
+      // Invalidar cache
+      this.invalidateCache();
+      this.cacheService.delete(`${this.CACHE_KEY_PREFIX}${id}`);
+      
+      // Registrar auditoria (não bloquear se falhar)
+      await this.auditService.logAction('DELETE', 'accounts_receivable', id, oldData, null).catch(err => 
+        this.logService.warn('Erro ao registrar auditoria:', err)
+      );
+    } catch (err: any) {
+      this.logService.error('Erro ao excluir conta a receber:', err);
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      const errorMsg = this.errorService.getErrorMessage(err);
+      throw new Error(errorMsg.message);
+    }
+  }
+
+  /**
+   * Invalida o cache de contas a receber
+   */
+  private invalidateCache(): void {
+    this.cacheService.delete(this.CACHE_KEY_ALL);
+    this.cacheService.invalidatePattern(this.CACHE_KEY_PREFIX);
+    this.cacheService.invalidatePattern(this.CACHE_KEY_CUSTOMER_PREFIX);
   }
 }
 
