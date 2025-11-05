@@ -235,3 +235,7 @@ export class CustomerFormComponent implements OnInit {
     return getErrorMessage(control);
   }
 
+  cancel() {
+    this.router.navigate(['/customers']);
+  }
+}

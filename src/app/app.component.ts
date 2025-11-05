@@ -12,7 +12,7 @@ import { filter } from 'rxjs/operators';
   imports: [RouterOutlet, RouterModule, CommonModule],
   template: `
     <div class="app-container">
-      <header *ngIf="!isLoginPage" class="app-header">
+      <header class="app-header">
         <div class="header-left">
           <h1>Futurannet Finance</h1>
           <nav>
@@ -77,6 +77,10 @@ import { filter } from 'rxjs/operators';
       display: flex;
       flex-direction: column;
       position: relative;
+    }
+
+    .app-container > * {
+      flex-shrink: 0;
     }
 
     .app-header {
@@ -188,18 +192,29 @@ import { filter } from 'rxjs/operators';
     }
 
     .main-content {
-      flex: 1;
+      flex: 1 0 auto;
       padding: 20px;
-      min-height: calc(100vh - 200px);
+      padding-bottom: 100px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
     }
+
+    .main-content .container {
+      flex: 1;
+    }
+
 
     .app-footer {
       background-color: #2d3748;
       color: white;
-      padding: 30px 20px;
-      margin-top: auto;
+      padding: 20px;
+      margin-top: 40px;
       width: 100%;
       box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+      flex-shrink: 0;
+      height: auto;
+      min-height: 120px;
     }
 
     .footer-content {
@@ -207,32 +222,32 @@ import { filter } from 'rxjs/operators';
       margin: 0 auto;
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 30px;
+      gap: 15px;
     }
 
     .footer-section h4 {
-      margin: 0 0 15px 0;
-      font-size: 16px;
+      margin: 0 0 8px 0;
+      font-size: 14px;
       font-weight: 600;
       color: #a0aec0;
     }
 
     .footer-section p {
-      margin: 8px 0;
-      font-size: 14px;
+      margin: 4px 0;
+      font-size: 12px;
       color: #cbd5e0;
     }
 
     .social-links {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 4px;
     }
 
     .social-links a {
       color: #cbd5e0;
       text-decoration: none;
-      font-size: 14px;
+      font-size: 12px;
       transition: color 0.2s;
     }
 
@@ -303,20 +318,24 @@ export class AppComponent implements OnInit, OnDestroy {
     });
 
     // Verificar se está na página de login
+    this.checkLoginPage();
+    
     this.router.events
       .pipe(filter(event => event instanceof NavigationEnd))
-      .subscribe((event: any) => {
-        this.isLoginPage = event.url === '/login' || event.urlAfterRedirects === '/login';
+      .subscribe(() => {
+        this.checkLoginPage();
       });
-
-    // Verificar rota inicial
-    this.isLoginPage = this.router.url === '/login';
   }
 
   ngOnDestroy() {
     if (this.timeInterval) {
       clearInterval(this.timeInterval);
     }
+  }
+
+  checkLoginPage() {
+    const url = this.router.url;
+    this.isLoginPage = url === '/login' || url.startsWith('/login');
   }
 
   updateDateTime() {

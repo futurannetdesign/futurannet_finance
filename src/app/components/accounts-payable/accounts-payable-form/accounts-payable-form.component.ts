@@ -280,3 +280,7 @@ export class AccountsPayableFormComponent implements OnInit {
     return getErrorMessage(control);
   }
 
+  cancel() {
+    this.router.navigate(['/accounts-payable']);
+  }
+}

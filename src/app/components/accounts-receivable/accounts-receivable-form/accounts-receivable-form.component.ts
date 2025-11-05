@@ -295,3 +295,7 @@ export class AccountsReceivableFormComponent implements OnInit {
     return getErrorMessage(control);
   }
 
+  cancel() {
+    this.router.navigate(['/accounts-receivable']);
+  }
+}
