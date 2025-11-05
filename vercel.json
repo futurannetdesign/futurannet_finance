@@ -1,6 +1,6 @@
 {
   "buildCommand": "npm run build:prod",
-  "outputDirectory": "dist/futurannet-finance/browser",
+  "outputDirectory": "dist/futurannet-finance",
   "rewrites": [
     {
       "source": "/(.*)",
