@@ -14,9 +14,14 @@ import { Profile } from '../../models/customer.model';
       <div class="card">
         <div class="card-header">
           <h2>Gerenciamento de Usuários</h2>
-          <button class="btn btn-primary" (click)="showCreateForm = true" *ngIf="!showCreateForm">
-            Novo Usuário
-          </button>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" (click)="loadProfiles()" title="Atualizar lista">
+              🔄 Atualizar Lista
+            </button>
+            <button class="btn btn-primary" (click)="showCreateForm = true" *ngIf="!showCreateForm">
+              Novo Usuário
+            </button>
+          </div>
         </div>
 
         <div *ngIf="loading" class="loading">
@@ -34,6 +39,20 @@ import { Profile } from '../../models/customer.model';
         <!-- Formulário de criação -->
         <div *ngIf="showCreateForm" class="create-form">
           <h3>Novo Usuário</h3>
+          <div class="alert alert-info" style="margin-bottom: 20px; background-color: #e3f2fd; color: #1976d2; padding: 15px; border-radius: 6px; border-left: 4px solid #2196f3;">
+            <strong>📝 Como criar usuário:</strong>
+            <ol style="margin: 10px 0; padding-left: 20px;">
+              <li>Acesse o <strong>Supabase Dashboard</strong></li>
+              <li>Vá em <strong>Authentication > Users</strong></li>
+              <li>Clique em <strong>"Add User"</strong> ou <strong>"Create User"</strong></li>
+              <li>Preencha email e senha</li>
+              <li>Marque <strong>"Auto Confirm User"</strong></li>
+              <li>Clique em <strong>"Create User"</strong></li>
+              <li>O perfil será criado automaticamente com role "Visualizador"</li>
+              <li>Volte aqui e atualize o perfil na lista abaixo se necessário</li>
+            </ol>
+            <p style="margin: 10px 0 0 0;"><strong>💡 Dica:</strong> Após criar no Supabase, clique em "Atualizar Lista" abaixo para ver o novo usuário.</p>
+          </div>
           <form [formGroup]="userForm" (ngSubmit)="onSubmit()">
             <div class="form-group">
               <label for="email">Email</label>
@@ -246,31 +265,52 @@ export class UsersComponent implements OnInit {
     try {
       const { email, password, role } = this.userForm.value;
 
-      // ⚠️ IMPORTANTE: auth.admin.createUser() requer Service Role Key
-      // Em produção, isso pode não funcionar se não estiver configurado corretamente
-      // Consulte docs/CONFIGURAR-GERENCIAMENTO-USUARIOS.md para alternativas
-      const { data: authData, error: authError } = await this.supabase.client.auth.admin.createUser({
+      // Usar signUp ao invés de admin.createUser (não requer Service Role Key)
+      // Nota: Em produção, você pode precisar desabilitar confirmação de email no Supabase
+      // ou usar uma Edge Function para criar usuários sem confirmação
+      const { data: authData, error: authError } = await this.supabase.client.auth.signUp({
         email,
         password,
-        email_confirm: true
+        options: {
+          emailRedirectTo: window.location.origin + '/login',
+          data: {
+            role: role // Guardar role nos metadados temporariamente
+          }
+        }
       });
 
       if (authError) {
-        // Mensagem de erro mais específica para erro de permissão
-        if (authError.message?.includes('permission') || authError.message?.includes('unauthorized')) {
+        // Verificar se é erro de usuário já existente
+        if (authError.message?.includes('already registered') || authError.message?.includes('already exists')) {
+          throw new Error('Este email já está cadastrado no sistema.');
+        }
+        
+        // Verificar se é erro de permissão
+        if (authError.message?.includes('permission') || authError.message?.includes('unauthorized') || authError.message?.includes('User not allowed')) {
           throw new Error(
-            'Erro de permissão: A criação de usuários requer configuração especial. ' +
-            'Consulte a documentação em docs/CONFIGURAR-GERENCIAMENTO-USUARIOS.md para alternativas. ' +
-            'Erro original: ' + authError.message
+            '⚠️ Não foi possível criar o usuário automaticamente.\n\n' +
+            '📋 SOLUÇÃO: Crie o usuário manualmente no Supabase Dashboard:\n\n' +
+            '1. Acesse: Authentication > Users\n' +
+            '2. Clique em "Add User" ou "Create User"\n' +
+            '3. Preencha email e senha\n' +
+            '4. Marque "Auto Confirm User"\n' +
+            '5. Clique em "Create User"\n' +
+            '6. Volte aqui e atualize o perfil na lista abaixo\n\n' +
+            '💡 Depois de criar no Supabase, o usuário aparecerá na lista abaixo e você poderá ajustar o perfil (viewer/manager/admin).\n\n' +
+            'Erro técnico: ' + authError.message
           );
         }
         throw authError;
       }
 
+      if (!authData.user) {
+        throw new Error('Usuário criado mas não foi possível obter os dados.');
+      }
+
       // Criar perfil na tabela profiles
       await this.supabase.createProfile(authData.user.id, email, role);
 
-      this.success = 'Usuário criado com sucesso!';
+      this.success = 'Usuário criado com sucesso! O usuário pode fazer login imediatamente.';
       this.userForm.reset({ role: 'viewer' });
       this.showCreateForm = false;
       await this.loadProfiles();
