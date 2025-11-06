@@ -83,6 +83,30 @@ import { AuthService } from '../../../services/auth.service';
       max-width: 400px;
     }
 
+    @media (max-width: 768px) {
+      .login-container {
+        padding: 15px;
+        align-items: flex-start;
+        padding-top: 40px;
+      }
+
+      .login-card {
+        padding: 30px 25px;
+        max-width: 100%;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .login-container {
+        padding: 10px;
+        padding-top: 30px;
+      }
+
+      .login-card {
+        padding: 25px 20px;
+      }
+    }
+
     .login-header {
       text-align: center;
       margin-bottom: 30px;
@@ -98,6 +122,26 @@ import { AuthService } from '../../../services/auth.service';
       color: #666;
       margin: 0;
       font-size: 14px;
+    }
+
+    @media (max-width: 768px) {
+      .login-header h1 {
+        font-size: 24px;
+      }
+
+      .login-header p {
+        font-size: 13px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .login-header h1 {
+        font-size: 20px;
+      }
+
+      .login-header {
+        margin-bottom: 25px;
+      }
     }
 
     .form-group {
@@ -187,9 +231,13 @@ export class LoginComponent implements OnInit {
     });
   }
 
-  ngOnInit() {
-    // Se já estiver autenticado, redireciona
-    if (this.authService.isAuthenticated()) {
+  async ngOnInit() {
+    // Aguardar inicialização da autenticação
+    await this.authService.waitForAuthInit();
+    
+    // Se já estiver autenticado, redireciona (isAuthenticated agora é async)
+    const isAuthenticated = await this.authService.isAuthenticated();
+    if (isAuthenticated) {
       this.router.navigate(['/dashboard']);
     }
   }

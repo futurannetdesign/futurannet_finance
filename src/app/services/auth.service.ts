@@ -13,6 +13,8 @@ export class AuthService {
   private currentUserSubject = new BehaviorSubject<any>(null);
   private currentProfileSubject = new BehaviorSubject<Profile | null>(null);
   private currentRoleSubject = new BehaviorSubject<'admin' | 'manager' | 'viewer' | null>(null);
+  private authInitialized = false;
+  private authInitPromise: Promise<void>;
 
   public currentUser$ = this.currentUserSubject.asObservable();
   public currentProfile$ = this.currentProfileSubject.asObservable();
@@ -24,23 +26,129 @@ export class AuthService {
     private logService: LogService,
     private errorService: ErrorService
   ) {
-    this.initAuth();
+    // Configurar listener ANTES de inicializar
+    this.setupAuthListener();
+    this.authInitPromise = this.initAuth();
+  }
+
+  private setupAuthListener() {
     this.supabase.client.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        this.loadUserProfile();
+      this.logService.log('Auth state changed:', event, session?.user?.email || 'sem usuário');
+      
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        if (session?.user) {
+          this.logService.log('Usuário autenticado no listener:', session.user.email, 'Evento:', event);
+          this.currentUserSubject.next(session.user);
+          // Carregar perfil sem bloquear se falhar
+          this.loadUserProfile().catch(err => 
+            this.logService.error('Erro ao carregar perfil no listener:', err)
+          );
+        } else if (event === 'INITIAL_SESSION') {
+          // INITIAL_SESSION sem sessão pode ser normal durante inicialização
+          this.logService.log('INITIAL_SESSION sem sessão - aguardando inicialização completa');
+        }
       } else if (event === 'SIGNED_OUT') {
+        this.logService.log('Usuário deslogado explicitamente');
         this.clearUser();
+      } else {
+        this.logService.log('Evento de auth não tratado:', event);
       }
     });
   }
 
   private async initAuth() {
-    const user = await this.supabase.getCurrentUser();
-    if (user) {
-      this.currentUserSubject.next(user);
-      await this.loadUserProfile();
-    } else {
-      this.clearUser();
+    try {
+      // Aguardar um pouco para garantir que o listener está configurado
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Verificar localStorage diretamente para debug
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const supabaseKeys = Object.keys(localStorage).filter(key => key.includes('supabase'));
+        this.logService.log('Chaves do Supabase no localStorage:', supabaseKeys);
+        supabaseKeys.forEach(key => {
+          const value = localStorage.getItem(key);
+          this.logService.log(`  ${key}:`, value ? (value.substring(0, 50) + '...') : 'null');
+        });
+      }
+      
+      // Verificar sessão atual do Supabase (usa localStorage automaticamente)
+      const { data: { session }, error } = await this.supabase.client.auth.getSession();
+      
+      if (error) {
+        this.logService.error('Erro ao obter sessão:', error);
+        // Verificar se há sessão válida mesmo com erro
+        const user = await this.supabase.getCurrentUser();
+        if (user) {
+          this.logService.log('Usuário encontrado apesar do erro:', user.email);
+          this.currentUserSubject.next(user);
+          await this.loadUserProfile();
+        } else {
+          this.logService.log('Nenhum usuário encontrado após erro');
+          this.clearUser();
+        }
+        return;
+      }
+      
+      if (session?.user) {
+        const expiresAt = session.expires_at ? new Date(session.expires_at * 1000) : null;
+        const isExpired = expiresAt ? expiresAt < new Date() : false;
+        
+        this.logService.log('Sessão encontrada ao inicializar:', {
+          email: session.user.email,
+          expiresAt: expiresAt?.toISOString(),
+          isExpired,
+          accessToken: session.access_token ? (session.access_token.substring(0, 20) + '...') : 'null'
+        });
+        
+        if (isExpired) {
+          this.logService.warn('Sessão expirada, tentando renovar...');
+          // Tentar renovar token
+          const { data: refreshData, error: refreshError } = await this.supabase.client.auth.refreshSession();
+          if (refreshError || !refreshData.session) {
+            this.logService.error('Erro ao renovar sessão:', refreshError);
+            this.clearUser();
+            return;
+          }
+          this.currentUserSubject.next(refreshData.session.user);
+        } else {
+          this.currentUserSubject.next(session.user);
+        }
+        
+        // Carregar perfil sem bloquear a autenticação se falhar
+        try {
+          await this.loadUserProfile();
+        } catch (profileError) {
+          this.logService.error('Erro ao carregar perfil na inicialização, mas mantendo autenticação:', profileError);
+          // Manter usuário autenticado mesmo se perfil falhar
+        }
+      } else {
+        this.logService.log('Nenhuma sessão encontrada no localStorage');
+        this.clearUser();
+      }
+    } catch (error) {
+      this.logService.error('Erro ao inicializar auth:', error);
+      // Tentar recuperar usuário antes de limpar
+      try {
+        const user = await this.supabase.getCurrentUser();
+        if (user) {
+          this.logService.log('Usuário recuperado após erro:', user.email);
+          this.currentUserSubject.next(user);
+        } else {
+          this.clearUser();
+        }
+      } catch {
+        this.clearUser();
+      }
+    } finally {
+      this.authInitialized = true;
+      const isAuth = this.currentUserSubject.value !== null;
+      this.logService.log('Auth inicializado. Usuário autenticado:', isAuth, isAuth ? this.currentUserSubject.value.email : '');
+    }
+  }
+
+  async waitForAuthInit(): Promise<void> {
+    if (!this.authInitialized) {
+      await this.authInitPromise;
     }
   }
 
@@ -48,10 +156,12 @@ export class AuthService {
     try {
       const user = await this.supabase.getCurrentUser();
       if (!user) {
+        this.logService.warn('Nenhum usuário encontrado ao carregar perfil');
         this.clearUser();
         return;
       }
 
+      // Manter o usuário autenticado mesmo se o perfil não for encontrado
       this.currentUserSubject.next(user);
       
       const profile = await this.supabase.getProfile(user.id);
@@ -62,12 +172,18 @@ export class AuthService {
         this.currentRoleSubject.next(profile.role);
         this.logService.log('Perfil atualizado no serviço. Role:', profile.role);
       } else {
-        this.logService.warn('Perfil não encontrado para o usuário:', user.id);
-        this.clearUser();
+        // Não limpar o usuário se ele estiver autenticado, apenas não definir perfil
+        // Isso permite que o usuário continue autenticado mesmo se o perfil não existir
+        this.logService.warn('Perfil não encontrado para o usuário:', user.id, '- Mantendo autenticação');
+        // Não chamar clearUser() aqui - manter o usuário autenticado
       }
     } catch (error) {
       this.logService.error('Erro ao carregar perfil:', error);
-      this.clearUser();
+      // Só limpar se realmente não houver usuário autenticado
+      const user = await this.supabase.getCurrentUser();
+      if (!user) {
+        this.clearUser();
+      }
     }
   }
 
@@ -124,6 +240,8 @@ export class AuthService {
   }
 
   async getCurrentUser() {
+    // Garantir que a inicialização terminou
+    await this.waitForAuthInit();
     return this.currentUserSubject.value;
   }
 
@@ -135,8 +253,53 @@ export class AuthService {
     return this.currentRoleSubject.value;
   }
 
-  isAuthenticated(): boolean {
-    return this.currentUserSubject.value !== null;
+  async isAuthenticated(): Promise<boolean> {
+    // Aguardar inicialização se necessário
+    await this.waitForAuthInit();
+    
+    // Verificar BehaviorSubject primeiro (mais rápido)
+    if (this.currentUserSubject.value !== null) {
+      this.logService.log('Usuário autenticado (BehaviorSubject):', this.currentUserSubject.value.email);
+      return true;
+    }
+    
+    // Se não houver no BehaviorSubject, verificar diretamente no Supabase
+    try {
+      const { data: { session }, error } = await this.supabase.client.auth.getSession();
+      
+      if (error) {
+        this.logService.error('Erro ao obter sessão em isAuthenticated:', error);
+        // Tentar getUser como fallback
+        const user = await this.supabase.getCurrentUser();
+        if (user) {
+          this.logService.log('Usuário encontrado via fallback:', user.email);
+          this.currentUserSubject.next(user);
+          // Tentar carregar perfil sem bloquear
+          this.loadUserProfile().catch(err => 
+            this.logService.error('Erro ao carregar perfil em isAuthenticated:', err)
+          );
+          return true;
+        }
+        return false;
+      }
+      
+      if (session?.user) {
+        this.logService.log('Sessão encontrada no Supabase:', session.user.email);
+        // Se encontrou sessão mas não está no BehaviorSubject, atualizar
+        this.currentUserSubject.next(session.user);
+        // Tentar carregar perfil sem bloquear a autenticação
+        this.loadUserProfile().catch(err => 
+          this.logService.error('Erro ao carregar perfil em isAuthenticated:', err)
+        );
+        return true;
+      }
+      
+      this.logService.log('Nenhuma sessão encontrada');
+    } catch (error) {
+      this.logService.error('Erro ao verificar autenticação:', error);
+    }
+    
+    return false;
   }
 
   canEdit(): boolean {

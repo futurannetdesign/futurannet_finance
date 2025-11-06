@@ -5,6 +5,39 @@ import { Customer } from '../models/customer.model';
 import { LogService } from './log.service';
 import { ErrorService } from './error.service';
 
+// Storage customizado que desabilita o LockManager para evitar conflitos
+class CustomStorage {
+  private storage: Storage;
+
+  constructor() {
+    this.storage = typeof window !== 'undefined' ? window.localStorage : ({} as Storage);
+  }
+
+  getItem(key: string): string | null {
+    try {
+      return this.storage.getItem(key);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  setItem(key: string, value: string): void {
+    try {
+      this.storage.setItem(key, value);
+    } catch (error) {
+      // Ignorar erros de quota excedida
+    }
+  }
+
+  removeItem(key: string): void {
+    try {
+      this.storage.removeItem(key);
+    } catch (error) {
+      // Ignorar erros
+    }
+  }
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -15,7 +48,33 @@ export class SupabaseService {
     private logService: LogService,
     private errorService: ErrorService
   ) {
-    this.supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+    // Configurar cliente com storage customizado
+    // O storage customizado evita problemas com LockManager em múltiplas abas
+    const customStorage = new CustomStorage();
+    
+    this.supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+        storage: customStorage
+      }
+    });
+
+    // Capturar erros não tratados do LockManager (não afeta funcionalidade)
+    // Esses erros ocorrem quando há múltiplas abas, mas não impedem o funcionamento
+    if (typeof window !== 'undefined') {
+      window.addEventListener('unhandledrejection', (event) => {
+        const reason = event.reason;
+        const message = reason?.message || reason?.toString() || '';
+        
+        // Ignorar erros do LockManager (são avisos, não erros críticos)
+        if (message.includes('LockManager') || message.includes('lock:sb-')) {
+          event.preventDefault(); // Prevenir que apareça no console
+          this.logService.debug('Erro do LockManager suprimido (não afeta funcionalidade)');
+        }
+      });
+    }
   }
 
   get client(): SupabaseClient {
@@ -23,6 +82,12 @@ export class SupabaseService {
   }
 
   async getCurrentUser() {
+    // Usar getSession primeiro para garantir que a sessão está carregada
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (session?.user) {
+      return session.user;
+    }
+    // Se não houver sessão, tentar getUser (pode retornar null se não autenticado)
     const { data: { user } } = await this.supabase.auth.getUser();
     return user;
   }

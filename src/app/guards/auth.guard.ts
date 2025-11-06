@@ -15,7 +15,11 @@ export class AuthGuard implements CanActivate {
     route: ActivatedRouteSnapshot,
     state: RouterStateSnapshot
   ): Promise<boolean> {
-    const isAuthenticated = this.authService.isAuthenticated();
+    // Aguardar inicialização da autenticação
+    await this.authService.waitForAuthInit();
+    
+    // isAuthenticated agora é async, precisa await
+    const isAuthenticated = await this.authService.isAuthenticated();
     
     if (!isAuthenticated) {
       this.router.navigate(['/login'], { queryParams: { returnUrl: state.url } });
@@ -39,7 +43,11 @@ export class AdminGuard implements CanActivate {
     route: ActivatedRouteSnapshot,
     state: RouterStateSnapshot
   ): Promise<boolean> {
-    const isAuthenticated = this.authService.isAuthenticated();
+    // Aguardar inicialização da autenticação
+    await this.authService.waitForAuthInit();
+    
+    // isAuthenticated agora é async, precisa await
+    const isAuthenticated = await this.authService.isAuthenticated();
     
     if (!isAuthenticated) {
       this.router.navigate(['/login'], { queryParams: { returnUrl: state.url } });

@@ -1,9 +1,11 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule, Router } from '@angular/router';
+import { RouterModule, Router, NavigationEnd } from '@angular/router';
 import { CustomerService } from '../../../services/customer.service';
 import { AuthService } from '../../../services/auth.service';
 import { Customer } from '../../../models/customer.model';
+import { filter } from 'rxjs/operators';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-customer-list',
@@ -95,12 +97,13 @@ import { Customer } from '../../../models/customer.model';
     }
   `]
 })
-export class CustomerListComponent implements OnInit {
+export class CustomerListComponent implements OnInit, OnDestroy {
   customers: Customer[] = [];
   loading = false;
   error: string | null = null;
   canEdit = false;
   canDelete = false;
+  private routerSubscription?: Subscription;
 
   constructor(
     private customerService: CustomerService,
@@ -112,13 +115,36 @@ export class CustomerListComponent implements OnInit {
     this.canEdit = this.authService.canEdit();
     this.canDelete = this.authService.canDelete();
     await this.loadCustomers();
+    
+    // Recarregar quando voltar para a página (após criar/editar)
+    this.routerSubscription = this.router.events
+      .pipe(filter(event => event instanceof NavigationEnd))
+      .subscribe(async (event: any) => {
+        if (event.url === '/customers') {
+          await this.loadCustomers();
+        }
+      });
+  }
+
+  ngOnDestroy() {
+    if (this.routerSubscription) {
+      this.routerSubscription.unsubscribe();
+    }
   }
 
   async loadCustomers() {
     this.loading = true;
     this.error = null;
     try {
-      this.customers = await this.customerService.getAll();
+      // Buscar clientes (já vem ordenado do serviço)
+      const customers = await this.customerService.getAll();
+      
+      // Garantir ordenação alfabética (dupla verificação)
+      this.customers = customers.sort((a, b) => {
+        const nameA = (a.name || '').trim().toLowerCase();
+        const nameB = (b.name || '').trim().toLowerCase();
+        return nameA.localeCompare(nameB, 'pt-BR', { sensitivity: 'base' });
+      });
     } catch (err: any) {
       this.error = err.message || 'Erro ao carregar clientes';
     } finally {

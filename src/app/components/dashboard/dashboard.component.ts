@@ -128,7 +128,8 @@ import { getStatusLabel } from '../../utils/account-status.util';
             <div *ngIf="upcomingReceivables.length === 0" class="empty-state-small">
               <p>Nenhuma conta próxima do vencimento</p>
             </div>
-            <table *ngIf="upcomingReceivables.length > 0" class="table-compact">
+            <div class="table-wrapper">
+              <table *ngIf="upcomingReceivables.length > 0" class="table-compact">
               <thead>
                 <tr>
                   <th>Cliente</th>
@@ -149,7 +150,8 @@ import { getStatusLabel } from '../../utils/account-status.util';
                   </td>
                 </tr>
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
 
           <div class="accounts-card">
@@ -160,7 +162,8 @@ import { getStatusLabel } from '../../utils/account-status.util';
             <div *ngIf="upcomingPayables.length === 0" class="empty-state-small">
               <p>Nenhuma conta próxima do vencimento</p>
             </div>
-            <table *ngIf="upcomingPayables.length > 0" class="table-compact">
+            <div class="table-wrapper">
+              <table *ngIf="upcomingPayables.length > 0" class="table-compact">
               <thead>
                 <tr>
                   <th>Descrição</th>
@@ -181,7 +184,8 @@ import { getStatusLabel } from '../../utils/account-status.util';
                   </td>
                 </tr>
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -192,24 +196,26 @@ import { getStatusLabel } from '../../utils/account-status.util';
               <h3>🔴 Contas a Receber - Atrasadas</h3>
               <a routerLink="/accounts-receivable" class="btn btn-secondary btn-sm">Ver Todas</a>
             </div>
-            <table class="table-compact">
-              <thead>
-                <tr>
-                  <th>Cliente</th>
-                  <th>Valor</th>
-                  <th>Vencimento</th>
-                  <th>Dias Atrasado</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let account of overdueReceivables" class="row-overdue">
-                  <td>{{ account.customers?.name || 'N/A' }}</td>
-                  <td>R$ {{ account.amount.toFixed(2).replace('.', ',') }}</td>
-                  <td>{{ formatDate(account.due_date) }}</td>
-                  <td>{{ getDaysOverdue(account.due_date) }} dias</td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="table-wrapper">
+              <table class="table-compact">
+                <thead>
+                  <tr>
+                    <th>Cliente</th>
+                    <th>Valor</th>
+                    <th>Vencimento</th>
+                    <th>Dias Atrasado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let account of overdueReceivables" class="row-overdue">
+                    <td>{{ account.customers?.name || 'N/A' }}</td>
+                    <td>R$ {{ account.amount.toFixed(2).replace('.', ',') }}</td>
+                    <td>{{ formatDate(account.due_date) }}</td>
+                    <td>{{ getDaysOverdue(account.due_date) }} dias</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div class="accounts-card" *ngIf="overduePayables.length > 0">
@@ -217,7 +223,8 @@ import { getStatusLabel } from '../../utils/account-status.util';
               <h3>🔴 Contas a Pagar - Atrasadas</h3>
               <a routerLink="/accounts-payable" class="btn btn-secondary btn-sm">Ver Todas</a>
             </div>
-            <table class="table-compact">
+            <div class="table-wrapper">
+              <table class="table-compact">
               <thead>
                 <tr>
                   <th>Descrição</th>
@@ -234,7 +241,8 @@ import { getStatusLabel } from '../../utils/account-status.util';
                   <td>{{ getDaysOverdue(account.due_date) }} dias</td>
                 </tr>
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -266,6 +274,45 @@ import { getStatusLabel } from '../../utils/account-status.util';
       grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
       gap: 20px;
       margin-bottom: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .summary-cards {
+        grid-template-columns: 1fr;
+        gap: 15px;
+      }
+
+      .summary-card {
+        padding: 20px;
+      }
+
+      .card-icon {
+        font-size: 36px;
+      }
+
+      .card-value {
+        font-size: 24px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .summary-cards {
+        gap: 12px;
+      }
+
+      .summary-card {
+        padding: 15px;
+        flex-direction: column;
+        text-align: center;
+      }
+
+      .card-icon {
+        font-size: 32px;
+      }
+
+      .card-value {
+        font-size: 20px;
+      }
     }
 
     .summary-card {
@@ -367,6 +414,13 @@ import { getStatusLabel } from '../../utils/account-status.util';
       gap: 20px;
     }
 
+    @media (max-width: 768px) {
+      .status-section {
+        grid-template-columns: 1fr;
+        gap: 15px;
+      }
+    }
+
     .status-card {
       background: white;
       border-radius: 8px;
@@ -411,6 +465,53 @@ import { getStatusLabel } from '../../utils/account-status.util';
       gap: 20px;
     }
 
+    @media (max-width: 768px) {
+      .accounts-section {
+        grid-template-columns: 1fr;
+        gap: 15px;
+      }
+
+      .accounts-card {
+        padding: 15px;
+      }
+
+      .accounts-card .card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .accounts-card .card-header h3 {
+        font-size: 16px;
+      }
+
+      .table-compact {
+        font-size: 12px;
+      }
+
+      .table-compact th,
+      .table-compact td {
+        padding: 8px 6px;
+        font-size: 11px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .accounts-section {
+        gap: 12px;
+      }
+
+      .accounts-card {
+        padding: 12px;
+      }
+
+      .table-compact th,
+      .table-compact td {
+        padding: 6px 4px;
+        font-size: 10px;
+      }
+    }
+
     .accounts-card {
       background: white;
       border-radius: 8px;
@@ -438,9 +539,17 @@ import { getStatusLabel } from '../../utils/account-status.util';
       font-size: 12px;
     }
 
+    .table-wrapper {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin: 0 -20px;
+      padding: 0 20px;
+    }
+
     .table-compact {
       width: 100%;
       border-collapse: collapse;
+      min-width: 500px;
     }
 
     .table-compact th {
