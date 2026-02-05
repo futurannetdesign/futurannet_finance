@@ -1,67 +1,25 @@
-import { Injectable } from '@angular/core';
-import { CanActivate, Router, ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
+import { inject } from '@angular/core';
+import { Router, CanActivateFn } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 
-@Injectable({
-  providedIn: 'root'
-})
-export class AuthGuard implements CanActivate {
-  constructor(
-    private authService: AuthService,
-    private router: Router
-  ) {}
+export const AuthGuard: CanActivateFn = () => {
+  const authService = inject(AuthService);
+  const router = inject(Router);
 
-  async canActivate(
-    route: ActivatedRouteSnapshot,
-    state: RouterStateSnapshot
-  ): Promise<boolean> {
-    // Aguardar inicialização da autenticação
-    await this.authService.waitForAuthInit();
-    
-    // isAuthenticated agora é async, precisa await
-    const isAuthenticated = await this.authService.isAuthenticated();
-    
-    if (!isAuthenticated) {
-      this.router.navigate(['/login'], { queryParams: { returnUrl: state.url } });
-      return false;
-    }
-
+  if (authService.isAuthenticated()) {
     return true;
   }
-}
 
-@Injectable({
-  providedIn: 'root'
-})
-export class AdminGuard implements CanActivate {
-  constructor(
-    private authService: AuthService,
-    private router: Router
-  ) {}
+  return router.createUrlTree(['/login']);
+};
 
-  async canActivate(
-    route: ActivatedRouteSnapshot,
-    state: RouterStateSnapshot
-  ): Promise<boolean> {
-    // Aguardar inicialização da autenticação
-    await this.authService.waitForAuthInit();
-    
-    // isAuthenticated agora é async, precisa await
-    const isAuthenticated = await this.authService.isAuthenticated();
-    
-    if (!isAuthenticated) {
-      this.router.navigate(['/login'], { queryParams: { returnUrl: state.url } });
-      return false;
-    }
+export const AdminGuard: CanActivateFn = () => {
+  const authService = inject(AuthService);
+  const router = inject(Router);
 
-    const isAdmin = this.authService.isAdmin();
-    
-    if (!isAdmin) {
-      this.router.navigate(['/dashboard']);
-      return false;
-    }
-
+  if (authService.isAuthenticated() && authService.isAdmin()) {
     return true;
   }
-}
 
+  return router.createUrlTree(['/dashboard']);
+};

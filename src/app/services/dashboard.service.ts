@@ -1,20 +1,21 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
+import { combineLatest, map, Observable, firstValueFrom } from 'rxjs';
 import { AccountsReceivableService } from './accounts-receivable.service';
 import { AccountsPayableService } from './accounts-payable.service';
 import { CustomerService } from './customer.service';
-import { LogService } from './log.service';
-import { ErrorService } from './error.service';
-import { CacheService } from './cache.service';
+
+export interface DashboardMetricBucket {
+  amount: number;
+  count: number;
+}
 
 export interface DashboardSummary {
-  totalReceivable: number;
-  totalPayable: number;
+  recebidas: DashboardMetricBucket;
+  confirmadas: DashboardMetricBucket;
+  aguardando: DashboardMetricBucket;
+  vencidas: DashboardMetricBucket;
   balance: number;
   activeCustomers: number;
-  overdueReceivable: number;
-  overduePayable: number;
-  upcomingReceivable: number;
-  upcomingPayable: number;
   statusCounts: {
     receivable: { verde: number; amarelo: number; vermelho: number };
     payable: { verde: number; amarelo: number; vermelho: number };
@@ -25,195 +26,101 @@ export interface DashboardSummary {
   providedIn: 'root'
 })
 export class DashboardService {
-  private readonly CACHE_KEY_SUMMARY = 'dashboard:summary';
-  private readonly CACHE_KEY_UPCOMING = 'dashboard:upcoming';
-  private readonly CACHE_KEY_OVERDUE = 'dashboard:overdue';
-  private readonly CACHE_TTL = 2 * 60 * 1000; // 2 minutos (cache curto para dados dinâmicos)
+  private recService = inject(AccountsReceivableService);
+  private payService = inject(AccountsPayableService);
+  private custService = inject(CustomerService);
 
-  constructor(
-    private accountsReceivableService: AccountsReceivableService,
-    private accountsPayableService: AccountsPayableService,
-    private customerService: CustomerService,
-    private logService: LogService,
-    private errorService: ErrorService,
-    private cacheService: CacheService
-  ) {}
+  getSummary$(): Observable<DashboardSummary> {
+    return combineLatest([
+      this.recService.getAll$(),
+      this.payService.getAll$(),
+      this.custService.getCustomers$(true)
+    ]).pipe(
+      map(([receivables, payables, customers]) => {
+        // Recebidas (Todas as pagas)
+        const recebidasAccs = receivables.filter(r => r.paid_date);
+        const recebidas: DashboardMetricBucket = {
+          amount: recebidasAccs.reduce((sum, r) => sum + r.amount, 0),
+          count: recebidasAccs.length
+        };
 
-  async getSummary(): Promise<DashboardSummary> {
-    // Verificar cache primeiro
-    const cached = this.cacheService.get<DashboardSummary>(this.CACHE_KEY_SUMMARY);
-    if (cached) {
-      return cached;
-    }
+        // Confirmadas (Pagas hoje)
+        const today = new Date().toISOString().split('T')[0];
+        const confirmadasAccs = receivables.filter(r => r.paid_date === today);
+        const confirmadas: DashboardMetricBucket = {
+          amount: confirmadasAccs.reduce((sum, r) => sum + r.amount, 0),
+          count: confirmadasAccs.length
+        };
 
-    try {
-      // Usar Promise.all para buscar dados em paralelo (já otimizado)
-      const [receivables, payables, customers] = await Promise.all([
-        this.accountsReceivableService.getAll(),
-        this.accountsPayableService.getAll(),
-        this.customerService.getAll()
-      ]);
+        // Aguardando Pagamento (Não pagas e NÃO vencidas)
+        const aguardandoAccs = receivables.filter(r => !r.paid_date && r.status !== 'vermelho');
+        const aguardando: DashboardMetricBucket = {
+          amount: aguardandoAccs.reduce((sum, r) => sum + r.amount, 0),
+          count: aguardandoAccs.length
+        };
 
-      // Calcular totais
-      const totalReceivable = receivables
-        .filter(r => !r.paid_date)
-        .reduce((sum, r) => sum + r.amount, 0);
+        // Vencidas (Não pagas e vencidas)
+        const vencidasAccs = receivables.filter(r => !r.paid_date && r.status === 'vermelho');
+        const vencidas: DashboardMetricBucket = {
+          amount: vencidasAccs.reduce((sum, r) => sum + r.amount, 0),
+          count: vencidasAccs.length
+        };
 
-      const totalPayable = payables
-        .filter(p => !p.paid_date)
-        .reduce((sum, p) => sum + p.amount, 0);
+        const totalPaid = payables
+          .filter(p => p.paid_date)
+          .reduce((sum, p) => sum + p.amount, 0);
 
-      const balance = totalReceivable - totalPayable;
+        const balance = recebidas.amount - totalPaid;
+        const activeCustomers = customers.length;
 
-      // Contar clientes ativos
-      const activeCustomers = customers.filter(c => c.is_active).length;
+        const receivableStatusCounts = {
+          verde: receivables.filter(r => r.status === 'verde').length,
+          amarelo: receivables.filter(r => r.status === 'amarelo').length,
+          vermelho: receivables.filter(r => r.status === 'vermelho').length
+        };
 
-      // Contar vencidas
-      const overdueReceivable = receivables.filter(r => r.status === 'vermelho' && !r.paid_date).length;
-      const overduePayable = payables.filter(p => p.status === 'vermelho' && !p.paid_date).length;
+        const payableStatusCounts = {
+          verde: payables.filter(p => p.status === 'verde').length,
+          amarelo: payables.filter(p => p.status === 'amarelo').length,
+          vermelho: payables.filter(p => p.status === 'vermelho').length
+        };
 
-      // Contar próximas do vencimento (amarelo)
-      const upcomingReceivable = receivables.filter(r => r.status === 'amarelo' && !r.paid_date).length;
-      const upcomingPayable = payables.filter(p => p.status === 'amarelo' && !p.paid_date).length;
-
-      // Contar por status
-      // Nota: Status já é calculado pelos serviços usando calculateAccountStatus
-      // Verde pode significar: pago OU em dia (mais de 5 dias antes)
-      // Amarelo: próximo do vencimento (0-5 dias, não pago)
-      // Vermelho: atrasado (vencido, não pago)
-      const receivableStatusCounts = {
-        verde: receivables.filter(r => r.status === 'verde').length,
-        amarelo: receivables.filter(r => r.status === 'amarelo').length,
-        vermelho: receivables.filter(r => r.status === 'vermelho').length
-      };
-
-      const payableStatusCounts = {
-        verde: payables.filter(p => p.status === 'verde').length,
-        amarelo: payables.filter(p => p.status === 'amarelo').length,
-        vermelho: payables.filter(p => p.status === 'vermelho').length
-      };
-
-      const summary: DashboardSummary = {
-        totalReceivable,
-        totalPayable,
-        balance,
-        activeCustomers,
-        overdueReceivable,
-        overduePayable,
-        upcomingReceivable,
-        upcomingPayable,
-        statusCounts: {
-          receivable: receivableStatusCounts,
-          payable: payableStatusCounts
-        }
-      };
-
-      // Armazenar no cache
-      this.cacheService.set(this.CACHE_KEY_SUMMARY, summary, this.CACHE_TTL);
-
-      return summary;
-    } catch (err: any) {
-      this.logService.error('Erro ao calcular resumo do dashboard:', err);
-      const errorMsg = this.errorService.getErrorMessage(err);
-      throw new Error(errorMsg.message);
-    }
+        return {
+          recebidas,
+          confirmadas,
+          aguardando,
+          vencidas,
+          balance,
+          activeCustomers,
+          statusCounts: {
+            receivable: receivableStatusCounts,
+            payable: payableStatusCounts
+          }
+        };
+      })
+    );
   }
 
-  async getUpcomingAccounts(days: number = 5) {
-    const cacheKey = `${this.CACHE_KEY_UPCOMING}:${days}`;
-    
-    // Verificar cache primeiro
-    const cached = this.cacheService.get<{ receivables: any[]; payables: any[] }>(cacheKey);
-    if (cached) {
-      return cached;
-    }
+  async getSummary(): Promise<DashboardSummary> {
+    return firstValueFrom(this.getSummary$());
+  }
 
-    try {
-      // Usar Promise.all para buscar dados em paralelo (já otimizado)
-      const [receivables, payables] = await Promise.all([
-        this.accountsReceivableService.getAll(),
-        this.accountsPayableService.getAll()
-      ]);
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const limitDate = new Date(today);
-      limitDate.setDate(limitDate.getDate() + days);
-
-      const upcomingReceivables = receivables
-        .filter(r => {
-          if (r.paid_date) return false;
-          const due = new Date(r.due_date);
-          due.setHours(0, 0, 0, 0);
-          return due >= today && due <= limitDate;
-        })
-        .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
-        .slice(0, 10);
-
-      const upcomingPayables = payables
-        .filter(p => {
-          if (p.paid_date) return false;
-          const due = new Date(p.due_date);
-          due.setHours(0, 0, 0, 0);
-          return due >= today && due <= limitDate;
-        })
-        .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
-        .slice(0, 10);
-
-      const result = {
-        receivables: upcomingReceivables,
-        payables: upcomingPayables
-      };
-
-      // Armazenar no cache
-      this.cacheService.set(cacheKey, result, this.CACHE_TTL);
-
-      return result;
-    } catch (err: any) {
-      this.logService.error('Erro ao buscar contas próximas:', err);
-      const errorMsg = this.errorService.getErrorMessage(err);
-      throw new Error(errorMsg.message);
-    }
+  // Simplified for transition
+  async getUpcomingAccounts() {
+     const receivables = await this.recService.getAll();
+     const payables = await this.payService.getAll();
+     return {
+       receivables: receivables.filter(r => r.status === 'amarelo' && !r.paid_date).slice(0, 10),
+       payables: payables.filter(p => p.status === 'amarelo' && !p.paid_date).slice(0, 10)
+     };
   }
 
   async getOverdueAccounts() {
-    // Verificar cache primeiro
-    const cached = this.cacheService.get<{ receivables: any[]; payables: any[] }>(this.CACHE_KEY_OVERDUE);
-    if (cached) {
-      return cached;
-    }
-
-    try {
-      // Usar Promise.all para buscar dados em paralelo (já otimizado)
-      const [receivables, payables] = await Promise.all([
-        this.accountsReceivableService.getAll(),
-        this.accountsPayableService.getAll()
-      ]);
-
-      const overdueReceivables = receivables
-        .filter(r => r.status === 'vermelho' && !r.paid_date)
-        .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
-        .slice(0, 10);
-
-      const overduePayables = payables
-        .filter(p => p.status === 'vermelho' && !p.paid_date)
-        .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
-        .slice(0, 10);
-
-      const result = {
-        receivables: overdueReceivables,
-        payables: overduePayables
-      };
-
-      // Armazenar no cache
-      this.cacheService.set(this.CACHE_KEY_OVERDUE, result, this.CACHE_TTL);
-
-      return result;
-    } catch (err: any) {
-      this.logService.error('Erro ao buscar contas atrasadas:', err);
-      const errorMsg = this.errorService.getErrorMessage(err);
-      throw new Error(errorMsg.message);
-    }
-  }
+    const receivables = await this.recService.getAll();
+    const payables = await this.payService.getAll();
+    return {
+      receivables: receivables.filter(r => r.status === 'vermelho' && !r.paid_date).slice(0, 10),
+      payables: payables.filter(p => p.status === 'vermelho' && !p.paid_date).slice(0, 10)
+    };
+ }
 }
-

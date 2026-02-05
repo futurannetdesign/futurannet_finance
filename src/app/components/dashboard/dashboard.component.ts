@@ -1,657 +1,259 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { DashboardService, DashboardSummary } from '../../services/dashboard.service';
-import { AccountReceivable, AccountPayable } from '../../models/customer.model';
-import { getStatusLabel } from '../../utils/account-status.util';
+import { AuthService } from '../../services/auth.service';
+import { Observable } from 'rxjs';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
   imports: [CommonModule, RouterModule],
   template: `
-    <div class="container">
-      <div class="dashboard-header">
-        <h1>Dashboard</h1>
-        <p>Visão geral financeira</p>
-      </div>
-
-      <div *ngIf="loading" class="loading">
-        Carregando dados do dashboard...
-      </div>
-
-      <div *ngIf="error" class="alert alert-error">
-        {{ error }}
-      </div>
-
-      <div *ngIf="!loading && !error && summary" class="dashboard-content">
-        <!-- Resumo Financeiro -->
-        <div class="summary-cards">
-          <div class="summary-card card-receivable">
-            <div class="card-icon">💰</div>
-            <div class="card-content">
-              <h3>Total a Receber</h3>
-              <p class="card-value">R$ {{ summary.totalReceivable.toFixed(2).replace('.', ',') }}</p>
-            </div>
-          </div>
-
-          <div class="summary-card card-payable">
-            <div class="card-icon">💸</div>
-            <div class="card-content">
-              <h3>Total a Pagar</h3>
-              <p class="card-value">R$ {{ summary.totalPayable.toFixed(2).replace('.', ',') }}</p>
-            </div>
-          </div>
-
-          <div class="summary-card card-balance" [class.positive]="summary.balance >= 0" [class.negative]="summary.balance < 0">
-            <div class="card-icon">{{ summary.balance >= 0 ? '📈' : '📉' }}</div>
-            <div class="card-content">
-              <h3>Saldo</h3>
-              <p class="card-value">R$ {{ summary.balance.toFixed(2).replace('.', ',') }}</p>
-            </div>
-          </div>
-
-          <div class="summary-card card-customers">
-            <div class="card-icon">👥</div>
-            <div class="card-content">
-              <h3>Clientes Ativos</h3>
-              <p class="card-value">{{ summary.activeCustomers }}</p>
-            </div>
+    <div class="min-h-screen bg-[#F8FAFC] pb-24 md:pb-6 font-sans text-[#334155]">
+      
+      <!-- Top Header / Balance Bar -->
+      <div class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-30">
+        <div class="flex flex-col">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Saldo em conta</span>
+          <div class="flex items-center gap-3">
+            <span class="text-xl font-bold text-[#00A868]">R$ {{ (metrics$ | async)?.balance | number:'1.2-2' }}</span>
+            <button class="text-slate-300 hover:text-slate-400 transition-colors">
+              <span class="material-icons-outlined text-lg">visibility</span>
+            </button>
           </div>
         </div>
-
-        <!-- Alertas -->
-        <div class="alerts-section">
-          <div class="alert-card alert-danger" *ngIf="summary.overdueReceivable > 0 || summary.overduePayable > 0">
-            <h3>⚠️ Contas Atrasadas</h3>
-            <p>
-              <strong>{{ summary.overdueReceivable }}</strong> contas a receber e 
-              <strong>{{ summary.overduePayable }}</strong> contas a pagar estão atrasadas
-            </p>
-          </div>
-
-          <div class="alert-card alert-warning" *ngIf="summary.upcomingReceivable > 0 || summary.upcomingPayable > 0">
-            <h3>🔔 Próximas do Vencimento</h3>
-            <p>
-              <strong>{{ summary.upcomingReceivable }}</strong> contas a receber e 
-              <strong>{{ summary.upcomingPayable }}</strong> contas a pagar vencem nos próximos 5 dias
-            </p>
-          </div>
-        </div>
-
-        <!-- Status por Categoria -->
-        <div class="status-section">
-          <div class="status-card">
-            <h3>Contas a Receber</h3>
-            <div class="status-bars">
-              <div class="status-bar">
-                <span class="status-label">Pago/Em Dia:</span>
-                <span class="status-value status-verde">{{ summary.statusCounts.receivable.verde }}</span>
-              </div>
-              <div class="status-bar">
-                <span class="status-label">Próximo:</span>
-                <span class="status-value status-amarelo">{{ summary.statusCounts.receivable.amarelo }}</span>
-              </div>
-              <div class="status-bar">
-                <span class="status-label">Atrasado:</span>
-                <span class="status-value status-vermelho">{{ summary.statusCounts.receivable.vermelho }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="status-card">
-            <h3>Contas a Pagar</h3>
-            <div class="status-bars">
-              <div class="status-bar">
-                <span class="status-label">Pago/Em Dia:</span>
-                <span class="status-value status-verde">{{ summary.statusCounts.payable.verde }}</span>
-              </div>
-              <div class="status-bar">
-                <span class="status-label">Próximo:</span>
-                <span class="status-value status-amarelo">{{ summary.statusCounts.payable.amarelo }}</span>
-              </div>
-              <div class="status-bar">
-                <span class="status-label">Atrasado:</span>
-                <span class="status-value status-vermelho">{{ summary.statusCounts.payable.vermelho }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Contas Próximas do Vencimento -->
-        <div class="accounts-section">
-          <div class="accounts-card">
-            <div class="card-header">
-              <h3>📅 Contas a Receber - Próximas do Vencimento</h3>
-              <a routerLink="/accounts-receivable" class="btn btn-secondary btn-sm">Ver Todas</a>
-            </div>
-            <div *ngIf="upcomingReceivables.length === 0" class="empty-state-small">
-              <p>Nenhuma conta próxima do vencimento</p>
-            </div>
-            <div class="table-wrapper">
-              <table *ngIf="upcomingReceivables.length > 0" class="table-compact">
-              <thead>
-                <tr>
-                  <th>Cliente</th>
-                  <th>Valor</th>
-                  <th>Vencimento</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let account of upcomingReceivables">
-                  <td>{{ account.customers?.name || 'N/A' }}</td>
-                  <td>R$ {{ account.amount.toFixed(2).replace('.', ',') }}</td>
-                  <td>{{ formatDate(account.due_date) }}</td>
-                  <td>
-                    <span [class]="'status-badge status-' + account.status">
-                      {{ getStatusLabel(account.status, account.paid_date) }}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="accounts-card">
-            <div class="card-header">
-              <h3>📅 Contas a Pagar - Próximas do Vencimento</h3>
-              <a routerLink="/accounts-payable" class="btn btn-secondary btn-sm">Ver Todas</a>
-            </div>
-            <div *ngIf="upcomingPayables.length === 0" class="empty-state-small">
-              <p>Nenhuma conta próxima do vencimento</p>
-            </div>
-            <div class="table-wrapper">
-              <table *ngIf="upcomingPayables.length > 0" class="table-compact">
-              <thead>
-                <tr>
-                  <th>Descrição</th>
-                  <th>Valor</th>
-                  <th>Vencimento</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let account of upcomingPayables">
-                  <td>{{ account.description }}</td>
-                  <td>R$ {{ account.amount.toFixed(2).replace('.', ',') }}</td>
-                  <td>{{ formatDate(account.due_date) }}</td>
-                  <td>
-                    <span [class]="'status-badge status-' + account.status">
-                      {{ getStatusLabel(account.status, account.paid_date) }}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- Contas Atrasadas -->
-        <div class="accounts-section" *ngIf="overdueReceivables.length > 0 || overduePayables.length > 0">
-          <div class="accounts-card" *ngIf="overdueReceivables.length > 0">
-            <div class="card-header">
-              <h3>🔴 Contas a Receber - Atrasadas</h3>
-              <a routerLink="/accounts-receivable" class="btn btn-secondary btn-sm">Ver Todas</a>
-            </div>
-            <div class="table-wrapper">
-              <table class="table-compact">
-                <thead>
-                  <tr>
-                    <th>Cliente</th>
-                    <th>Valor</th>
-                    <th>Vencimento</th>
-                    <th>Dias Atrasado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr *ngFor="let account of overdueReceivables" class="row-overdue">
-                    <td>{{ account.customers?.name || 'N/A' }}</td>
-                    <td>R$ {{ account.amount.toFixed(2).replace('.', ',') }}</td>
-                    <td>{{ formatDate(account.due_date) }}</td>
-                    <td>{{ getDaysOverdue(account.due_date) }} dias</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="accounts-card" *ngIf="overduePayables.length > 0">
-            <div class="card-header">
-              <h3>🔴 Contas a Pagar - Atrasadas</h3>
-              <a routerLink="/accounts-payable" class="btn btn-secondary btn-sm">Ver Todas</a>
-            </div>
-            <div class="table-wrapper">
-              <table class="table-compact">
-              <thead>
-                <tr>
-                  <th>Descrição</th>
-                  <th>Valor</th>
-                  <th>Vencimento</th>
-                  <th>Dias Atrasado</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let account of overduePayables" class="row-overdue">
-                  <td>{{ account.description }}</td>
-                  <td>R$ {{ account.amount.toFixed(2).replace('.', ',') }}</td>
-                  <td>{{ formatDate(account.due_date) }}</td>
-                  <td>{{ getDaysOverdue(account.due_date) }} dias</td>
-                </tr>
-              </tbody>
-              </table>
-            </div>
+        <div class="flex items-center gap-4">
+          <button class="p-2 text-slate-400 hover:bg-slate-50 rounded-full transition-all">
+            <span class="material-icons-outlined">notifications</span>
+          </button>
+          <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold border border-slate-200">
+            {{ userInitial }}
           </div>
         </div>
       </div>
+
+      <main class="p-6 max-w-7xl mx-auto space-y-8">
+        
+        <!-- Welcome Section -->
+        <div>
+          <nav class="flex items-center gap-2 text-[11px] text-slate-400 mb-4">
+            <span class="material-icons-outlined text-sm">home</span>
+            <span>Início</span>
+          </nav>
+          <h1 class="text-2xl font-bold text-slate-800">Olá, {{ userName }}</h1>
+        </div>
+
+        <!-- Charging Situation Header -->
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <h2 class="text-lg font-bold text-slate-700">Situação das cobranças</h2>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 text-xs text-slate-500 mr-4">
+              <div class="w-8 h-4 bg-slate-200 rounded-full relative">
+                <div class="absolute right-1 top-0.5 w-3 h-3 bg-white rounded-full"></div>
+              </div>
+              <span>Versão gráfico</span>
+            </div>
+            <button class="bg-white border border-slate-200 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-slate-50">
+              <span class="material-icons-outlined text-sm">calendar_today</span>
+              Este mês
+              <span class="material-icons-outlined text-sm">expand_more</span>
+            </button>
+            <button class="bg-white border border-slate-200 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-slate-50">
+              <span class="material-icons-outlined text-sm">tune</span>
+              Filtros
+              <span class="material-icons-outlined text-sm">expand_more</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Metric Cards Grid -->
+        <div *ngIf="metrics$ | async as metrics" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          
+          <!-- Recebidas -->
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-56 transition-all hover:shadow-md cursor-default group">
+            <div class="flex justify-between items-start">
+              <span class="text-sm font-semibold text-slate-600">Recebidas</span>
+              <span class="material-icons-outlined text-slate-300 text-sm cursor-help">info</span>
+            </div>
+            <div class="mt-4 flex flex-col">
+              <span class="text-2xl font-black text-[#00A868] tracking-tight">R$ {{ metrics.recebidas.amount | number:'1.2-2' }}</span>
+              <span class="text-[10px] text-slate-400 font-medium">R$ {{ metrics.recebidas.amount * 0.97 | number:'1.2-2' }} líquido</span>
+            </div>
+            <div class="mt-auto pt-6 space-y-4">
+              <!-- Progress Bar -->
+              <div class="h-2 w-full bg-slate-50 rounded-full overflow-hidden">
+                <div class="h-full bg-[#00A868] w-full"></div>
+              </div>
+              <!-- Stats Links -->
+              <div class="flex flex-col gap-1.5">
+                <a routerLink="/customers" class="flex items-center justify-between text-xs text-[#00A868] font-semibold group-hover:translate-x-1 transition-transform">
+                  <div class="flex items-center gap-2">
+                    <span class="material-icons-outlined text-sm">people_outline</span>
+                    <span>{{ metrics.recebidas.count }} {{ metrics.recebidas.count === 1 ? 'cliente' : 'clientes' }}</span>
+                  </div>
+                  <span class="material-icons-outlined text-sm">chevron_right</span>
+                </a>
+                <a routerLink="/accounts-receivable" class="flex items-center justify-between text-xs text-[#00A868] font-semibold group-hover:translate-x-1 transition-transform">
+                  <div class="flex items-center gap-2">
+                    <span class="material-icons-outlined text-sm">receipt_long</span>
+                    <span>{{ metrics.recebidas.count }} {{ metrics.recebidas.count === 1 ? 'cobrança' : 'cobranças' }}</span>
+                  </div>
+                  <span class="material-icons-outlined text-sm">chevron_right</span>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-56 transition-all hover:shadow-md cursor-default group">
+            <div class="flex justify-between items-start">
+              <span class="text-sm font-semibold text-slate-600">Confirmadas</span>
+              <span class="material-icons-outlined text-slate-300 text-sm">info</span>
+            </div>
+            <div class="mt-4 flex flex-col">
+               <span class="text-2xl font-black text-[#6366F1] tracking-tight">R$ {{ metrics.confirmadas.amount | number:'1.2-2' }}</span>
+               <span class="text-[10px] text-slate-400 font-medium">R$ {{ metrics.confirmadas.amount * 0.97 | number:'1.2-2' }} líquido</span>
+            </div>
+            <div class="mt-auto pt-6 space-y-4">
+               <div class="h-2 w-full bg-indigo-50 relative overflow-hidden rounded-full">
+                  <div class="absolute inset-0 striped-bg w-full"></div>
+               </div>
+               <div class="flex flex-col gap-1.5">
+                  <a routerLink="/accounts-receivable" class="flex items-center justify-between text-xs text-[#6366F1] font-semibold group-hover:translate-x-1 transition-transform">
+                    <div class="flex items-center gap-2">
+                      <span class="material-icons-outlined text-sm">person_outline</span>
+                      <span>{{ metrics.confirmadas.count }} {{ metrics.confirmadas.count === 1 ? 'cliente' : 'clientes' }}</span>
+                    </div>
+                    <span class="material-icons-outlined text-sm">chevron_right</span>
+                  </a>
+                  <a routerLink="/accounts-receivable" class="flex items-center justify-between text-xs text-[#6366F1] font-semibold group-hover:translate-x-1 transition-transform">
+                    <div class="flex items-center gap-2">
+                       <span class="material-icons-outlined text-sm">credit_card</span>
+                       <span>{{ metrics.confirmadas.count }} {{ metrics.confirmadas.count === 1 ? 'cobrança' : 'cobranças' }}</span>
+                    </div>
+                    <span class="material-icons-outlined text-sm">chevron_right</span>
+                  </a>
+               </div>
+            </div>
+          </div>
+
+          <!-- Aguardando pagamento -->
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-56 transition-all hover:shadow-md cursor-default group">
+            <div class="flex justify-between items-start">
+              <span class="text-sm font-semibold text-slate-600">Aguardando pag...</span>
+              <span class="material-icons-outlined text-slate-300 text-sm cursor-help">info</span>
+            </div>
+            <div class="mt-4 flex flex-col">
+              <span class="text-2xl font-black text-[#F47500] tracking-tight">R$ {{ metrics.aguardando.amount | number:'1.2-2' }}</span>
+              <span class="text-[10px] text-slate-400 font-medium">R$ {{ metrics.aguardando.amount * 0.97 | number:'1.2-2' }} líquido</span>
+            </div>
+            <div class="mt-auto pt-6 space-y-4">
+              <div class="h-2 w-full bg-slate-50 rounded-full overflow-hidden">
+                <div class="h-full bg-[#F47500] w-full"></div>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <a routerLink="/customers" class="flex items-center justify-between text-xs text-[#F47500] font-semibold group-hover:translate-x-1 transition-transform">
+                  <div class="flex items-center gap-2">
+                    <span class="material-icons-outlined text-sm">people_outline</span>
+                    <span>{{ metrics.aguardando.count }} {{ metrics.aguardando.count === 1 ? 'cliente' : 'clientes' }}</span>
+                  </div>
+                  <span class="material-icons-outlined text-sm">chevron_right</span>
+                </a>
+                <a routerLink="/accounts-receivable" class="flex items-center justify-between text-xs text-[#F47500] font-semibold group-hover:translate-x-1 transition-transform">
+                  <div class="flex items-center gap-2">
+                    <span class="material-icons-outlined text-sm">receipt_long</span>
+                    <span>{{ metrics.aguardando.count }} {{ metrics.aguardando.count === 1 ? 'cobrança' : 'cobranças' }}</span>
+                  </div>
+                  <span class="material-icons-outlined text-sm">chevron_right</span>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Vencidas -->
+          <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between h-56 transition-all hover:shadow-md cursor-default group">
+            <div class="flex justify-between items-start">
+              <span class="text-sm font-semibold text-slate-600">Vencidas</span>
+              <span class="material-icons-outlined text-slate-300 text-sm cursor-help">info</span>
+            </div>
+            <div class="mt-4 flex flex-col">
+              <span class="text-2xl font-black text-[#E11D48] tracking-tight">R$ {{ metrics.vencidas.amount | number:'1.2-2' }}</span>
+              <span class="text-[10px] text-slate-400 font-medium">R$ {{ metrics.vencidas.amount * 0.97 | number:'1.2-2' }} líquido</span>
+            </div>
+            <div class="mt-auto pt-6 space-y-4">
+              <div class="h-2 w-full bg-rose-50 relative overflow-hidden rounded-full">
+                <div class="absolute inset-0 striped-bg-red w-full"></div>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <a routerLink="/customers" class="flex items-center justify-between text-xs text-[#E11D48] font-semibold group-hover:translate-x-1 transition-transform">
+                  <div class="flex items-center gap-2">
+                    <span class="material-icons-outlined text-sm">people_outline</span>
+                    <span>{{ metrics.vencidas.count }} {{ metrics.vencidas.count === 1 ? 'cliente' : 'clientes' }}</span>
+                  </div>
+                  <span class="material-icons-outlined text-sm">chevron_right</span>
+                </a>
+                <a routerLink="/accounts-receivable" class="flex items-center justify-between text-xs text-[#E11D48] font-semibold group-hover:translate-x-1 transition-transform">
+                  <div class="flex items-center gap-2">
+                    <span class="material-icons-outlined text-sm">receipt_long</span>
+                    <span>{{ metrics.vencidas.count }} {{ metrics.vencidas.count === 1 ? 'cobrança' : 'cobranças' }}</span>
+                  </div>
+                  <span class="material-icons-outlined text-sm">chevron_right</span>
+                </a>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Float Action Buttons for Speed -->
+        <div class="fixed bottom-24 right-6 md:bottom-8 flex flex-col gap-3 group z-40">
+           <button routerLink="/customers/new" class="w-12 h-12 bg-white rounded-full shadow-lg border border-slate-200 flex items-center justify-center text-slate-600 hover:scale-110 active:scale-95 transition-all">
+             <span class="material-icons-outlined">person_add</span>
+           </button>
+           <button routerLink="/accounts-receivable/new" class="w-14 h-14 bg-[#00A868] rounded-full shadow-xl flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all">
+             <span class="material-icons-outlined text-2xl">add</span>
+           </button>
+        </div>
+
+      </main>
     </div>
   `,
   styles: [`
-    .dashboard-header {
-      margin-bottom: 30px;
+    :host { display: block; }
+    main { opacity: 0; animation: fadeIn 0.4s ease-out forwards; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    
+    .striped-bg {
+      background: repeating-linear-gradient(
+        45deg,
+        #818CF8,
+        #818CF8 10px,
+        #6366F1 10px,
+        #6366F1 20px
+      );
+      opacity: 0.3;
     }
 
-    .dashboard-header h1 {
-      margin: 0 0 5px 0;
-      color: #333;
-    }
-
-    .dashboard-header p {
-      color: #666;
-      margin: 0;
-    }
-
-    .dashboard-content {
-      display: flex;
-      flex-direction: column;
-      gap: 25px;
-    }
-
-    .summary-cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 20px;
-      margin-bottom: 20px;
-    }
-
-    @media (max-width: 768px) {
-      .summary-cards {
-        grid-template-columns: 1fr;
-        gap: 15px;
-      }
-
-      .summary-card {
-        padding: 20px;
-      }
-
-      .card-icon {
-        font-size: 36px;
-      }
-
-      .card-value {
-        font-size: 24px;
-      }
-    }
-
-    @media (max-width: 480px) {
-      .summary-cards {
-        gap: 12px;
-      }
-
-      .summary-card {
-        padding: 15px;
-        flex-direction: column;
-        text-align: center;
-      }
-
-      .card-icon {
-        font-size: 32px;
-      }
-
-      .card-value {
-        font-size: 20px;
-      }
-    }
-
-    .summary-card {
-      background: white;
-      border-radius: 12px;
-      padding: 25px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      display: flex;
-      align-items: center;
-      gap: 20px;
-      transition: transform 0.2s;
-    }
-
-    .summary-card:hover {
-      transform: translateY(-2px);
-    }
-
-    .card-icon {
-      font-size: 48px;
-      line-height: 1;
-    }
-
-    .card-content h3 {
-      margin: 0 0 8px 0;
-      font-size: 14px;
-      color: #666;
-      font-weight: 500;
-      text-transform: uppercase;
-    }
-
-    .card-value {
-      margin: 0;
-      font-size: 28px;
-      font-weight: 700;
-      color: #333;
-    }
-
-    .card-receivable {
-      border-left: 4px solid #28a745;
-    }
-
-    .card-payable {
-      border-left: 4px solid #dc3545;
-    }
-
-    .card-balance {
-      border-left: 4px solid #007bff;
-    }
-
-    .card-balance.positive .card-value {
-      color: #28a745;
-    }
-
-    .card-balance.negative .card-value {
-      color: #dc3545;
-    }
-
-    .card-customers {
-      border-left: 4px solid #17a2b8;
-    }
-
-    .alerts-section {
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-    }
-
-    .alert-card {
-      padding: 20px;
-      border-radius: 8px;
-      border-left: 4px solid;
-    }
-
-    .alert-card h3 {
-      margin: 0 0 10px 0;
-      font-size: 16px;
-    }
-
-    .alert-card p {
-      margin: 0;
-      font-size: 14px;
-    }
-
-    .alert-danger {
-      background-color: #fff5f5;
-      border-color: #dc3545;
-      color: #721c24;
-    }
-
-    .alert-warning {
-      background-color: #fffbf0;
-      border-color: #ffc107;
-      color: #856404;
-    }
-
-    .status-section {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 20px;
-    }
-
-    @media (max-width: 768px) {
-      .status-section {
-        grid-template-columns: 1fr;
-        gap: 15px;
-      }
-    }
-
-    .status-card {
-      background: white;
-      border-radius: 8px;
-      padding: 20px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    .status-card h3 {
-      margin: 0 0 15px 0;
-      font-size: 18px;
-      color: #333;
-    }
-
-    .status-bars {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .status-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px;
-      background-color: #f8f9fa;
-      border-radius: 6px;
-    }
-
-    .status-label {
-      font-weight: 500;
-      color: #666;
-    }
-
-    .status-value {
-      font-weight: 700;
-      font-size: 18px;
-    }
-
-    .accounts-section {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-      gap: 20px;
-    }
-
-    @media (max-width: 768px) {
-      .accounts-section {
-        grid-template-columns: 1fr;
-        gap: 15px;
-      }
-
-      .accounts-card {
-        padding: 15px;
-      }
-
-      .accounts-card .card-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 10px;
-      }
-
-      .accounts-card .card-header h3 {
-        font-size: 16px;
-      }
-
-      .table-compact {
-        font-size: 12px;
-      }
-
-      .table-compact th,
-      .table-compact td {
-        padding: 8px 6px;
-        font-size: 11px;
-      }
-    }
-
-    @media (max-width: 480px) {
-      .accounts-section {
-        gap: 12px;
-      }
-
-      .accounts-card {
-        padding: 12px;
-      }
-
-      .table-compact th,
-      .table-compact td {
-        padding: 6px 4px;
-        font-size: 10px;
-      }
-    }
-
-    .accounts-card {
-      background: white;
-      border-radius: 8px;
-      padding: 20px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    .accounts-card .card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 15px;
-      padding-bottom: 15px;
-      border-bottom: 2px solid #f0f0f0;
-    }
-
-    .accounts-card .card-header h3 {
-      margin: 0;
-      font-size: 18px;
-      color: #333;
-    }
-
-    .btn-sm {
-      padding: 6px 12px;
-      font-size: 12px;
-    }
-
-    .table-wrapper {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      margin: 0 -20px;
-      padding: 0 20px;
-    }
-
-    .table-compact {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 500px;
-    }
-
-    .table-compact th {
-      background-color: #f8f9fa;
-      padding: 10px;
-      text-align: left;
-      font-weight: 600;
-      font-size: 12px;
-      color: #666;
-      border-bottom: 2px solid #dee2e6;
-    }
-
-    .table-compact td {
-      padding: 10px;
-      border-bottom: 1px solid #eee;
-      font-size: 14px;
-    }
-
-    .table-compact tr:hover {
-      background-color: #f8f9fa;
-    }
-
-    .empty-state-small {
-      text-align: center;
-      padding: 30px;
-      color: #999;
-    }
-
-    .status-badge {
-      display: inline-block;
-      padding: 4px 12px;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-    }
-
-    .status-verde {
-      background-color: #d4edda;
-      color: #155724;
-    }
-
-    .status-amarelo {
-      background-color: #fff3cd;
-      color: #856404;
-    }
-
-    .status-vermelho {
-      background-color: #f8d7da;
-      color: #721c24;
+    .striped-bg-red {
+      background: repeating-linear-gradient(
+        45deg,
+        #FDA4AF,
+        #FDA4AF 10px,
+        #E11D48 10px,
+        #E11D48 20px
+      );
+      opacity: 0.3;
     }
   `]
 })
 export class DashboardComponent implements OnInit {
-  summary: DashboardSummary | null = null;
-  upcomingReceivables: AccountReceivable[] = [];
-  upcomingPayables: AccountPayable[] = [];
-  overdueReceivables: AccountReceivable[] = [];
-  overduePayables: AccountPayable[] = [];
-  loading = false;
-  error: string | null = null;
+  private dashboardService = inject(DashboardService);
+  private authService = inject(AuthService);
+  
+  metrics$: Observable<DashboardSummary> = this.dashboardService.getSummary$();
+  
+  userName = computed(() => this.authService.currentProfile()?.email?.split('@')[0] || 'Usuário');
+  userInitial = computed(() => this.userName().charAt(0).toUpperCase());
 
-  // Usar função compartilhada para getStatusLabel
-  getStatusLabel = getStatusLabel;
-
-  constructor(private dashboardService: DashboardService) {}
-
-  async ngOnInit() {
-    await this.loadDashboard();
-  }
-
-  async loadDashboard() {
-    this.loading = true;
-    this.error = null;
-    try {
-      this.summary = await this.dashboardService.getSummary();
-      const upcoming = await this.dashboardService.getUpcomingAccounts(5);
-      const overdue = await this.dashboardService.getOverdueAccounts();
-      
-      this.upcomingReceivables = upcoming.receivables;
-      this.upcomingPayables = upcoming.payables;
-      this.overdueReceivables = overdue.receivables;
-      this.overduePayables = overdue.payables;
-    } catch (err: any) {
-      this.error = err.message || 'Erro ao carregar dados do dashboard';
-    } finally {
-      this.loading = false;
-    }
-  }
-
-  formatDate(dateString: string): string {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR');
-  }
-
-  getDaysOverdue(dueDate: string): number {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const due = new Date(dueDate);
-    due.setHours(0, 0, 0, 0);
-    const diffDays = Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays > 0 ? diffDays : 0;
-  }
+  ngOnInit() {}
 }
-
