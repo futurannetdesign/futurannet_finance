@@ -64,6 +64,18 @@ export class AccountsReceivableService {
     return { id: docRef.id, ...account } as AccountReceivable;
   }
 
+  async update(id: string, account: Partial<AccountReceivable>) {
+    const ref = doc(this.firestore, `${this.collectionName}/${id}`);
+    const oldData = await this.getById(id);
+    await updateDoc(ref, {
+      ...account,
+      updated_at: new Date().toISOString()
+    });
+    const newData = await this.getById(id);
+    await this.auditService.logAction('UPDATE', this.collectionName, id, oldData, newData);
+    return newData!;
+  }
+
   async markAsPaid(id: string, paidDate: string, isRecurring: boolean) {
     const ref = doc(this.firestore, `${this.collectionName}/${id}`);
     const oldData = await this.getById(id);

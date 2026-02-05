@@ -1,0 +1,9 @@
+Vercel CLI 48.8.2
+Retrieving projectÔÇª
+Deploying franks-projects-89da69c4/futurannet-finance
+Inspect: https://vercel.com/franks-projects-89da69c4/futurannet-finance/AziGScrBD4F8c8pTh9DHQEna6eM6 [2s]
+Production: https://futurannet-finance-1vh0u7f13-franks-projects-89da69c4.vercel.app [2s]
+Building
+Building
+Error: Command "npm run build:prod" exited with 1
+https://futurannet-finance-1vh0u7f13-franks-projects-89da69c4.vercel.app

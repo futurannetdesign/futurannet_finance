@@ -1,0 +1,187 @@
+
+> futurannet-finance@1.0.0 build:prod
+> ng build --configuration production
+
+- Generating browser application bundles (phase: setup)...
+Ô£ö Browser application bundle generation complete.
+Ô£ö Browser application bundle generation complete.
+
+Warning: src/app/components/dashboard/dashboard.component.ts:31:16 - warning NG8109: userInitial is a function and should be invoked: userInitial()
+
+31             {{ userInitial }}
+                  ~~~~~~~~~~~
+
+
+
+Warning: src/app/components/dashboard/dashboard.component.ts:31:16 - warning NG8117: Function in text interpolation should be invoked: userInitial()
+
+31             {{ userInitial }}
+                  ~~~~~~~~~~~
+
+
+
+Warning: src/app/components/dashboard/dashboard.component.ts:44:65 - warning NG8109: userName is a function and should be invoked: userName()
+
+44           <h1 class="text-2xl font-bold text-slate-800">Ol├í, {{ userName }}</h1>
+                                                                   ~~~~~~~~
+
+
+
+Warning: src/app/components/dashboard/dashboard.component.ts:44:65 - warning NG8117: Function in text interpolation should be invoked: userName()
+
+44           <h1 class="text-2xl font-bold text-slate-800">Ol├í, {{ userName }}</h1>
+                                                                   ~~~~~~~~
+
+
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/es.array.index-of.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/es.array.iterator.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/es.array.reduce.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/es.array.reverse.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/es.promise.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/es.regexp.to-string.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/es.string.ends-with.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/es.string.includes.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/es.string.match.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/es.string.replace.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/es.string.split.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/es.string.starts-with.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/es.string.trim.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'core-js/modules/web.dom-collections.iterator.js'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'raf'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\node_modules\canvg\lib\index.es.js depends on 'rgbcolor'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+Warning: H:\sistema de pagamento\futurannet_finance\src\app\services\export.service.ts depends on 'jspdf-autotable'. CommonJS or AMD dependencies can cause optimization bailouts.
+For more info see: https://angular.dev/tools/cli/build#configuring-commonjs-dependencies
+
+
+
+Error: src/app/app.component.ts:59:33 - error TS2339: Property 'logout' does not exist on type 'AuthService'.
+
+59           <button (click)="auth.logout()" class="flex items-center w-full px-4 py-2 text-sm text-slate-400 hover:text-white hover:bg-slate-800 transition-all active:scale-95">
+                                   ~~~~~~
+
+
+
+Error: src/app/app.component.ts:93:31 - error TS2339: Property 'logout' does not exist on type 'AuthService'.
+
+93         <button (click)="auth.logout()" class="flex flex-col items-center justify-center w-full h-full text-slate-400 active:scale-90 transition-transform">
+                                 ~~~~~~
+
+
+
+Error: src/app/components/accounts-payable/accounts-payable-detail/accounts-payable-detail.component.ts:255:41 - error TS2339: Property 'markAsPaid' does not exist on type 'AccountsPayableService'.
+
+255       await this.accountsPayableService.markAsPaid(
+                                            ~~~~~~~~~~
+
+
+Error: src/app/components/accounts-payable/accounts-payable-list/accounts-payable-list.component.ts:224:41 - error TS2339: Property 'markAsPaid' does not exist on type 'AccountsPayableService'.
+
+224       await this.accountsPayableService.markAsPaid(
+                                            ~~~~~~~~~~
+
+
+Error: src/app/components/accounts-receivable/accounts-receivable-form/accounts-receivable-form.component.ts:275:55 - error TS2339: Property 'update' does not exist on type 'AccountsReceivableService'.
+
+275         result = await this.accountsReceivableService.update(this.accountId, accountData);
+                                                          ~~~~~~
+
+
+Error: src/app/components/audit-log/audit-log.component.ts:280:7 - error TS2740: Type 'Observable<AuditLog[]>' is missing the following properties from type 'AuditLog[]': length, pop, push, concat, and 28 more.
+
+280       this.logs = await this.auditService.getAllLogs();
+          ~~~~~~~~~
+
+
+Error: src/app/components/customers/customer-form/customer-form.component.ts:211:34 - error TS2339: Property 'checkDuplicateName' does not exist on type 'CustomerService'.
+
+211             this.customerService.checkDuplicateName(normalizedValue, excludeId || undefined)
+                                     ~~~~~~~~~~~~~~~~~~
+
+
+Error: src/app/components/customers/customer-form/customer-form.component.ts:212:21 - error TS7006: Parameter 'isDuplicate' implicitly has an 'any' type.
+
+212               .then(isDuplicate => {
+                        ~~~~~~~~~~~
+
+
+Error: src/app/components/customers/customer-form/customer-form.component.ts:216:22 - error TS7006: Parameter 'err' implicitly has an 'any' type.
+
+216               .catch(err => {
+                         ~~~
+
+
+Error: src/app/components/customers/customer-form/customer-form.component.ts:305:56 - error TS2339: Property 'checkDuplicateName' does not exist on type 'CustomerService'.
+
+305         const isDuplicate = await this.customerService.checkDuplicateName(formValue.name);
+                                                           ~~~~~~~~~~~~~~~~~~
+
+
+Error: src/app/components/users/users.component.ts:4:33 - error TS2307: Cannot find module '../../services/supabase.service' or its corresponding type declarations.
+
+4 import { SupabaseService } from '../../services/supabase.service';
+                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Error: src/app/components/users/users.component.ts:223:13 - error NG2003: No suitable injection token for parameter 'supabase' of class 'UsersComponent'.
+  Consider using the @Inject decorator to specify an injection token.
+
+223     private supabase: SupabaseService,
+                ~~~~~~~~
+
+  src/app/components/users/users.component.ts:223:23
+    223     private supabase: SupabaseService,
+                              ~~~~~~~~~~~~~~~
+    This type does not have a value, so it cannot be used as injection token.
+
+
+Error: src/app/components/users/users.component.ts:235:41 - error TS2551: Property 'getCurrentUser' does not exist on type 'AuthService'. Did you mean 'currentUser'?
+
+235     const user = await this.authService.getCurrentUser();
+                                            ~~~~~~~~~~~~~~
+
+  src/app/services/auth.service.ts:35:12
+    35   readonly currentUser = computed(() => this.userSignal());
+                  ~~~~~~~~~~~
+    'currentUser' is declared here.
+
+
+Error: src/main.ts:19:56 - error TS2339: Property 'firebase' does not exist on type '{ production: boolean; supabaseUrl: string; supabaseAnonKey: string; }'.
+
+19     provideFirebaseApp(() => initializeApp(environment.firebase)),
+                                                          ~~~~~~~~
+
+
+

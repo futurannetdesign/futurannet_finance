@@ -75,6 +75,34 @@ export class AccountsPayableService {
     return newData!;
   }
 
+  async markAsPaid(id: string, paidDate: string, isRecurring: boolean) {
+    const ref = doc(this.firestore, `${this.collectionName}/${id}`);
+    const oldData = await this.getById(id);
+
+    if (isRecurring && oldData) {
+      const dueDate = new Date(oldData.due_date);
+      const nextMonth = new Date(dueDate);
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      
+      await this.create({
+        description: oldData.description,
+        amount: oldData.amount,
+        due_date: nextMonth.toISOString().split('T')[0],
+        is_recurring: true,
+        category: oldData.category
+      });
+    }
+
+    await updateDoc(ref, { 
+      paid_date: paidDate,
+      updated_at: new Date().toISOString()
+    });
+
+    const newData = await this.getById(id);
+    await this.auditService.logAction('UPDATE', this.collectionName, id, oldData, newData);
+    return newData!;
+  }
+
   async delete(id: string) {
     const ref = doc(this.firestore, `${this.collectionName}/${id}`);
     await deleteDoc(ref);

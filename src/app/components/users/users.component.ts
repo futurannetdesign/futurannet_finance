@@ -1,7 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { SupabaseService } from '../../services/supabase.service';
 import { AuthService } from '../../services/auth.service';
 import { Profile } from '../../models/customer.model';
 
@@ -220,7 +219,6 @@ export class UsersComponent implements OnInit {
   currentUserId: string | null = null;
 
   constructor(
-    private supabase: SupabaseService,
     private authService: AuthService,
     private fb: FormBuilder
   ) {
@@ -232,9 +230,9 @@ export class UsersComponent implements OnInit {
   }
 
   async ngOnInit() {
-    const user = await this.authService.getCurrentUser();
+    const user = this.authService.currentUser();
     if (user) {
-      this.currentUserId = user.id;
+      this.currentUserId = user.uid;
     }
     await this.loadProfiles();
   }
@@ -242,84 +240,12 @@ export class UsersComponent implements OnInit {
   async loadProfiles() {
     this.loading = true;
     this.error = null;
-
-    try {
-      this.profiles = await this.supabase.getAllProfiles();
-    } catch (err: any) {
-      this.error = 'Erro ao carregar usuários: ' + (err.message || 'Erro desconhecido');
-      console.error('Erro ao carregar perfis:', err);
-    } finally {
-      this.loading = false;
-    }
+    this.success = 'Firebase migration: User management disabled. Please use Firebase Console.';
+    this.loading = false;
   }
 
   async onSubmit() {
-    if (this.userForm.invalid) {
-      return;
-    }
-
-    this.creating = true;
-    this.error = null;
-    this.success = null;
-
-    try {
-      const { email, password, role } = this.userForm.value;
-
-      // Usar signUp ao invés de admin.createUser (não requer Service Role Key)
-      // Nota: Em produção, você pode precisar desabilitar confirmação de email no Supabase
-      // ou usar uma Edge Function para criar usuários sem confirmação
-      const { data: authData, error: authError } = await this.supabase.client.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: window.location.origin + '/login',
-          data: {
-            role: role // Guardar role nos metadados temporariamente
-          }
-        }
-      });
-
-      if (authError) {
-        // Verificar se é erro de usuário já existente
-        if (authError.message?.includes('already registered') || authError.message?.includes('already exists')) {
-          throw new Error('Este email já está cadastrado no sistema.');
-        }
-        
-        // Verificar se é erro de permissão
-        if (authError.message?.includes('permission') || authError.message?.includes('unauthorized') || authError.message?.includes('User not allowed')) {
-          throw new Error(
-            '⚠️ Não foi possível criar o usuário automaticamente.\n\n' +
-            '📋 SOLUÇÃO: Crie o usuário manualmente no Supabase Dashboard:\n\n' +
-            '1. Acesse: Authentication > Users\n' +
-            '2. Clique em "Add User" ou "Create User"\n' +
-            '3. Preencha email e senha\n' +
-            '4. Marque "Auto Confirm User"\n' +
-            '5. Clique em "Create User"\n' +
-            '6. Volte aqui e atualize o perfil na lista abaixo\n\n' +
-            '💡 Depois de criar no Supabase, o usuário aparecerá na lista abaixo e você poderá ajustar o perfil (viewer/manager/admin).\n\n' +
-            'Erro técnico: ' + authError.message
-          );
-        }
-        throw authError;
-      }
-
-      if (!authData.user) {
-        throw new Error('Usuário criado mas não foi possível obter os dados.');
-      }
-
-      // Criar perfil na tabela profiles
-      await this.supabase.createProfile(authData.user.id, email, role);
-
-      this.success = 'Usuário criado com sucesso! O usuário pode fazer login imediatamente.';
-      this.userForm.reset({ role: 'viewer' });
-      this.showCreateForm = false;
-      await this.loadProfiles();
-    } catch (err: any) {
-      this.error = 'Erro ao criar usuário: ' + (err.message || 'Erro desconhecido');
-      console.error('Erro ao criar usuário:', err);
-    } finally {
-      this.creating = false;
-    }
+    this.error = 'User management is now handled via Firebase Console. Please create users there.';
   }
 
   cancelCreate() {
@@ -330,74 +256,11 @@ export class UsersComponent implements OnInit {
   }
 
   async updateRole(userId: string, event: any) {
-    const newRole = event.target.value;
-    this.error = null;
-    this.success = null;
-
-    try {
-      await this.supabase.updateProfileRole(userId, newRole);
-      this.success = 'Perfil atualizado com sucesso!';
-      await this.loadProfiles();
-      
-      setTimeout(() => {
-        this.success = null;
-      }, 3000);
-    } catch (err: any) {
-      this.error = 'Erro ao atualizar perfil: ' + (err.message || 'Erro desconhecido');
-      await this.loadProfiles(); // Recarregar para reverter visualmente
-    }
+    this.error = 'User role management is now handled via Firebase Console.';
   }
 
   async deleteUser(userId: string) {
-    if (!confirm('Tem certeza que deseja excluir este usuário?')) {
-      return;
-    }
-
-    this.error = null;
-    this.success = null;
-
-    try {
-      // Excluir perfil primeiro
-      const { error: profileError } = await this.supabase.client
-        .from('profiles')
-        .delete()
-        .eq('id', userId);
-
-      if (profileError) throw profileError;
-
-      // ⚠️ IMPORTANTE: auth.admin.deleteUser() requer Service Role Key
-      // Tentar excluir do Auth, mas não bloquear se falhar (perfil já foi excluído)
-      try {
-        const { error: authError } = await this.supabase.client.auth.admin.deleteUser(userId);
-        
-        if (authError) {
-          // Se for erro de permissão, mostrar aviso mas não bloquear
-          if (authError.message?.includes('permission') || authError.message?.includes('unauthorized')) {
-            console.warn('Aviso: Não foi possível excluir o usuário do sistema de autenticação devido a permissões. ' +
-                        'O perfil foi removido do sistema. Consulte docs/CONFIGURAR-GERENCIAMENTO-USUARIOS.md');
-            this.success = 'Perfil excluído com sucesso! Nota: Exclusão do Auth requer configuração especial.';
-          } else {
-            console.warn('Erro ao excluir usuário do Auth:', authError);
-            this.success = 'Perfil excluído com sucesso!';
-          }
-        } else {
-          this.success = 'Usuário excluído com sucesso!';
-        }
-      } catch (authErr: any) {
-        // Se falhar ao excluir do Auth, ainda assim considerar sucesso (perfil foi excluído)
-        console.warn('Não foi possível excluir do Auth:', authErr);
-        this.success = 'Perfil excluído com sucesso!';
-      }
-
-      await this.loadProfiles();
-      
-      setTimeout(() => {
-        this.success = null;
-      }, 5000); // Aumentar tempo para mensagens de aviso
-    } catch (err: any) {
-      this.error = 'Erro ao excluir usuário: ' + (err.message || 'Erro desconhecido');
-      console.error('Erro ao excluir usuário:', err);
-    }
+    this.error = 'User deletion is now handled via Firebase Console.';
   }
 
   isCurrentUser(userId: string): boolean {

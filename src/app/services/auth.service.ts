@@ -78,7 +78,7 @@ export class AuthService {
     }
   }
 
-  async signOut() { // Renamed from logout to signOut for compatibility if needed
+  async signOut() {
     try {
       await signOut(this.auth);
       this.userSignal.set(null);
@@ -89,6 +89,11 @@ export class AuthService {
       this.logService.error('Logout failed:', err);
       throw err;
     }
+  }
+
+  // Alias for backward compatibility
+  async logout() {
+    return this.signOut();
   }
 
   // Compatibility helper for waitForAuthInit if needed by old guards (though I updated them)

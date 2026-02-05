@@ -83,6 +83,24 @@ export class CustomerService {
     }
   }
 
+  async checkDuplicateName(name: string, excludeId?: string): Promise<boolean> {
+    try {
+      const customersRef = collection(this.firestore, this.collectionName);
+      const normalizedName = name.trim().toLowerCase();
+      const allCustomers = await firstValueFrom(collectionData(customersRef, { idField: 'id' }) as Observable<Customer[]>);
+      
+      const duplicate = allCustomers.find(c => 
+        c.name.trim().toLowerCase() === normalizedName && 
+        (!excludeId || c.id !== excludeId)
+      );
+      
+      return !!duplicate;
+    } catch (err: any) {
+      this.logService.error('Error checking duplicate name:', err);
+      return false;
+    }
+  }
+
   async delete(id: string) {
     try {
       const customerRef = doc(this.firestore, `${this.collectionName}/${id}`);

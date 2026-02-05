@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { firstValueFrom } from 'rxjs';
 import { AuditService } from '../../services/audit.service';
 import { AuthService } from '../../services/auth.service';
 import { AuditLog } from '../../models/customer.model';
@@ -277,7 +278,7 @@ export class AuditLogComponent implements OnInit {
     this.error = null;
 
     try {
-      this.logs = await this.auditService.getAllLogs();
+      this.logs = await firstValueFrom(this.auditService.getAllLogs());
       this.filterLogs();
     } catch (err: any) {
       this.error = 'Erro ao carregar logs: ' + (err.message || 'Erro desconhecido');

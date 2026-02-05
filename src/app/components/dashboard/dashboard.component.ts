@@ -28,7 +28,7 @@ import { Observable } from 'rxjs';
             <span class="material-icons-outlined">notifications</span>
           </button>
           <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold border border-slate-200">
-            {{ userInitial }}
+            {{ userInitial() }}
           </div>
         </div>
       </div>
@@ -41,7 +41,7 @@ import { Observable } from 'rxjs';
             <span class="material-icons-outlined text-sm">home</span>
             <span>Início</span>
           </nav>
-          <h1 class="text-2xl font-bold text-slate-800">Olá, {{ userName }}</h1>
+          <h1 class="text-2xl font-bold text-slate-800">Olá, {{ userName() }}</h1>
         </div>
 
         <!-- Charging Situation Header -->
