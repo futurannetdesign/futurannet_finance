@@ -1,0 +1,10 @@
+node_modules
+.angular
+dist
+.env
+.DS_Store
+*.log
+.git
+.agent
+.gemini
+brain
