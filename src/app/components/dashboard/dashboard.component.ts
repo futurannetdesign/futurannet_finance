@@ -10,38 +10,13 @@ import { Observable } from 'rxjs';
   standalone: true,
   imports: [CommonModule, RouterModule],
   template: `
-    <div class="min-h-screen bg-[#F8FAFC] pb-24 md:pb-6 font-sans text-[#334155]">
+    <div class="min-h-screen pb-24 md:pb-6 font-sans text-[#334155] animate-fade-in">
       
-      <!-- Top Header / Balance Bar -->
-      <div class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-30">
-        <div class="flex flex-col">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Saldo em conta</span>
-          <div class="flex items-center gap-3">
-            <span class="text-xl font-bold text-[#00A868]">R$ {{ (metrics$ | async)?.balance | number:'1.2-2' }}</span>
-            <button class="text-slate-300 hover:text-slate-400 transition-colors">
-              <span class="material-icons-outlined text-lg">visibility</span>
-            </button>
-          </div>
-        </div>
-        <div class="flex items-center gap-4">
-          <button class="p-2 text-slate-400 hover:bg-slate-50 rounded-full transition-all">
-            <span class="material-icons-outlined">notifications</span>
-          </button>
-          <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold border border-slate-200">
-            {{ userInitial() }}
-          </div>
-        </div>
-      </div>
-
-      <main class="p-6 max-w-7xl mx-auto space-y-8">
+      <main class="max-w-7xl mx-auto space-y-8 mt-4">
         
         <!-- Welcome Section -->
         <div>
-          <nav class="flex items-center gap-2 text-[11px] text-slate-400 mb-4">
-            <span class="material-icons-outlined text-sm">home</span>
-            <span>Início</span>
-          </nav>
-          <h1 class="text-2xl font-bold text-slate-800">Olá, {{ userName() }}</h1>
+          <h1 class="text-2xl font-bold text-[#001E3C] tracking-tight">Olá, {{ userName() }}</h1>
         </div>
 
         <!-- Charging Situation Header -->
@@ -50,16 +25,16 @@ import { Observable } from 'rxjs';
           <div class="flex items-center gap-3">
             <div class="flex items-center gap-2 text-xs text-slate-500 mr-4">
               <div class="w-8 h-4 bg-slate-200 rounded-full relative">
-                <div class="absolute right-1 top-0.5 w-3 h-3 bg-white rounded-full"></div>
+                <div class="absolute right-1 top-0.5 w-3 h-3 bg-white rounded-full transition-all"></div>
               </div>
               <span>Versão gráfico</span>
             </div>
-            <button class="bg-white border border-slate-200 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-slate-50">
+            <button class="bg-white border border-slate-200 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition-colors">
               <span class="material-icons-outlined text-sm">calendar_today</span>
               Este mês
               <span class="material-icons-outlined text-sm">expand_more</span>
             </button>
-            <button class="bg-white border border-slate-200 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-slate-50">
+            <button class="bg-white border border-slate-200 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition-colors">
               <span class="material-icons-outlined text-sm">tune</span>
               Filtros
               <span class="material-icons-outlined text-sm">expand_more</span>
@@ -220,29 +195,29 @@ import { Observable } from 'rxjs';
   `,
   styles: [`
     :host { display: block; }
-    main { opacity: 0; animation: fadeIn 0.4s ease-out forwards; }
+    .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     
     .striped-bg {
       background: repeating-linear-gradient(
         45deg,
-        #818CF8,
-        #818CF8 10px,
-        #6366F1 10px,
-        #6366F1 20px
+        #E0E7FF,
+        #E0E7FF 10px,
+        #C7D2FE 10px,
+        #C7D2FE 20px
       );
-      opacity: 0.3;
+      opacity: 1;
     }
 
     .striped-bg-red {
       background: repeating-linear-gradient(
         45deg,
-        #FDA4AF,
-        #FDA4AF 10px,
-        #E11D48 10px,
-        #E11D48 20px
+        #FFE4E6,
+        #FFE4E6 10px,
+        #FECDD3 10px,
+        #FECDD3 20px
       );
-      opacity: 0.3;
+      opacity: 1;
     }
   `]
 })
